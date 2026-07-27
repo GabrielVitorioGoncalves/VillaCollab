@@ -206,7 +206,7 @@ npm run dev
 - [x] Levantamento de requisitos
 - [x] Modelagem da arquitetura
 - [x] Prototipação no Figma
-- [x] Modelagem do banco de dados
+- [ ] Modelagem do banco de dados
 - [ ] Sistema de autenticação
 - [ ] Cadastro de usuários
 - [ ] Cadastro de lojas
@@ -245,8 +245,8 @@ npm run dev
 
 | Nome | GitHub |
 |-------|--------|
-| Gabriel Vitório Gonçalves | @GabrielVitorio |
-| Lucas Leal de Oliveira | |
+| Gabriel Vitório Gonçalves |  |
+| Lucas Leal de Oliveira |  |
 | Yuri David Arins Cidral | |
 
 ---
