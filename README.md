@@ -1,6 +1,6 @@
 <div align="center">
 
-#Villa Collab Marketplace
+# Villa Collab Marketplace
 
 ### Plataforma para comércio eletrônico
 
@@ -20,7 +20,7 @@ Este projeto está sendo desenvolvido como parte do PAC extensionista do curso d
 
 ---
 
-#Sobre o Projeto
+# Sobre o Projeto
 
 O Villa Collab Marketplace é um marketplace colaborativo criado para facilitar a entrada de pequenos empreendedores da Villa Collab no comércio eletrônico.
 
@@ -30,9 +30,9 @@ O projeto foi concebido utilizando boas práticas de Engenharia de Software, Arq
 
 ---
 
-#Funcionalidades
+# Funcionalidades
 
-##Cliente
+## Cliente
 
 * Cadastro e autenticação
 * Navegação por lojas
@@ -44,7 +44,7 @@ O projeto foi concebido utilizando boas práticas de Engenharia de Software, Arq
 
 ---
 
-##Lojista
+## Lojista
 
 * Gerenciamento da loja
 * Gerenciamento de produtos
@@ -54,7 +54,7 @@ O projeto foi concebido utilizando boas práticas de Engenharia de Software, Arq
 
 ---
 
-##Administrador
+## Administrador
 
 - Cadastro e gerenciamento de usuários
 - Cadastro e gerenciamento de lojas
@@ -64,16 +64,16 @@ O projeto foi concebido utilizando boas práticas de Engenharia de Software, Arq
 
 ---
 
-#Protótipo
+# Protótipo
 
 O design da aplicação foi desenvolvido no Figma, permitindo validar toda a experiência do usuário antes da implementação.
 
-###Acesse o protótipo
+### Acesse o protótipo
 https://www.figma.com/design/5ubGBdbOpjNCYsWnDTHvlf/Collab?node-id=0-1
 
 ---
 
-#Arquitetura
+# Arquitetura
 
 ```text
                  Usuário
@@ -97,7 +97,7 @@ https://www.figma.com/design/5ubGBdbOpjNCYsWnDTHvlf/Collab?node-id=0-1
 
 ---
 
-#Tecnologias
+# Tecnologias
 
 ### Front-end
 
@@ -132,11 +132,11 @@ https://www.figma.com/design/5ubGBdbOpjNCYsWnDTHvlf/Collab?node-id=0-1
 
 ---
 
-#Segurança
+# Segurança
 
 A segurança foi considerada desde o planejamento da aplicação.
 
-###Autenticação
+### Autenticação
 
 - JWT Authentication
 
@@ -176,7 +176,7 @@ Durante o desenvolvimento serão realizados testes para validar:
 
 ---
 
-#Estrutura do Projeto
+# Estrutura do Projeto
 
 ```bash
 villa-collab/
@@ -244,7 +244,7 @@ npm run dev
 
 ---
 
-#Equipe
+# Equipe
 
 | Nome | GitHub |
 |-------|--------|
