@@ -1,10 +1,11 @@
 <div align="center">
 
-# 🛒 Villa Collab Marketplace
+# Villa Collab Marketplace
 
-### Plataforma Multi-Tenant para Comércio Eletrônico
+### Plataforma para comércio eletrônico
 
-Uma plataforma moderna desenvolvida para conectar pequenos empreendedores a clientes em um único ambiente digital, utilizando arquitetura **Multi-Tenant**, foco em escalabilidade, segurança e experiência do usuário.
+Uma plataforma moderna desenvolvida para conectar pequenos empreendedores a clientes em um único ambiente digital, utilizando arquitetura Multi-Tenant, foco em escalabilidade, segurança e experiência do usuário.
+Este projeto está sendo desenvolvido como parte do PAC extensionista do curso de Engenharia de Software do Centro Universitário Católica de Santa Catarina.
 
 <br>
 
@@ -19,59 +20,60 @@ Uma plataforma moderna desenvolvida para conectar pequenos empreendedores a clie
 
 ---
 
-# 📖 Sobre o Projeto
+# Sobre o Projeto
 
-O **Villa Collab Marketplace** é um marketplace colaborativo criado para facilitar a entrada de pequenos empreendedores no comércio eletrônico.
+O Villa Collab Marketplace é um marketplace colaborativo criado para facilitar a entrada de pequenos empreendedores da Villa Collab no comércio eletrônico.
 
-Ao invés de cada comerciante precisar manter sua própria loja virtual, diversos lojistas compartilham uma única plataforma, mantendo seus dados totalmente isolados através de uma arquitetura **Multi-Tenant**.
+Ao invés de cada comerciante precisar manter sua própria loja virtual, diversos lojistas compartilham uma única plataforma, mantendo seus dados totalmente isolados.
 
 O projeto foi concebido utilizando boas práticas de Engenharia de Software, Arquitetura de Sistemas, Segurança da Informação e Desenvolvimento Web.
 
 ---
 
-# ✨ Funcionalidades
+# Funcionalidades
 
-## 👤 Cliente
+## Cliente
 
-- Cadastro e Login
-- Pesquisa de produtos
-- Carrinho de compras
-- Histórico de pedidos
-- Gerenciamento de perfil
-
----
-
-## 🏪 Lojista
-
-- Cadastro da loja
-- Cadastro de produtos
-- Controle de estoque
-- Gerenciamento de pedidos
-- Dashboard de vendas
+* Cadastro e autenticação
+* Navegação por lojas
+* Busca de produtos
+* Visualização de detalhes dos produtos
+* Carrinho de compras
+* Realização de pedidos
+* Acompanhamento dos pedidos
 
 ---
 
-## 🔐 Administrador
+## Lojista
 
-- Gerenciamento de usuários
-- Gerenciamento de lojas
+* Gerenciamento da loja
+* Gerenciamento de produtos
+* Controle de estoque
+* Gerenciamento de pedidos
+* Atualização das informações da loja
+
+---
+
+## Administrador
+
+- Cadastro e gerenciamento de usuários
+- Cadastro e gerenciamento de lojas
 - Controle de permissões
 - Auditoria
 - Monitoramento da plataforma
 
 ---
 
-# 🎨 Protótipo
+# Protótipo
 
-O design da aplicação foi desenvolvido no **Figma**, permitindo validar toda a experiência do usuário antes da implementação.
+O design da aplicação foi desenvolvido no Figma, permitindo validar toda a experiência do usuário antes da implementação.
 
-### 🔗 Acesse o protótipo
-
+### Acesse o protótipo
 https://www.figma.com/design/5ubGBdbOpjNCYsWnDTHvlf/Collab?node-id=0-1
 
 ---
 
-# 🏗 Arquitetura
+# Arquitetura
 
 ```text
                  Usuário
@@ -95,7 +97,7 @@ https://www.figma.com/design/5ubGBdbOpjNCYsWnDTHvlf/Collab?node-id=0-1
 
 ---
 
-# 💻 Tecnologias
+# Tecnologias
 
 ### Front-end
 
@@ -130,7 +132,7 @@ https://www.figma.com/design/5ubGBdbOpjNCYsWnDTHvlf/Collab?node-id=0-1
 
 ---
 
-# 🔒 Segurança
+# Segurança
 
 A segurança foi considerada desde o planejamento da aplicação.
 
@@ -151,10 +153,6 @@ A segurança foi considerada desde o planejamento da aplicação.
 - Backup
 - Logs de Auditoria
 
-### Multi-Tenant
-
-- Isolamento de dados por `tenant_id`
-
 ### Conformidade
 
 - LGPD
@@ -163,7 +161,22 @@ A segurança foi considerada desde o planejamento da aplicação.
 
 ---
 
-# 📂 Estrutura do Projeto
+## Testes
+
+Durante o desenvolvimento serão realizados testes para validar:
+
+* autenticação;
+* gerenciamento de usuários;
+* gerenciamento de produtos;
+* processamento de pedidos;
+* upload de imagens;
+* permissões de acesso;
+* isolamento dos dados entre lojistas;
+* segurança da aplicação.
+
+---
+
+# Estrutura do Projeto
 
 ```bash
 villa-collab/
@@ -184,16 +197,15 @@ villa-collab/
 ```bash
 # Clone o repositório
 
-git clone https://github.com/SEU-USUARIO/villa-collab.git
-
 # Entre na pasta
 
-cd villa-collab
+cd villa-collab/frontend
 
 # Instale as dependências
 
 npm install
 
+(Repita o mesmo com a pasta /backend)
 # Execute a aplicação
 
 npm run dev
@@ -201,7 +213,7 @@ npm run dev
 
 ---
 
-# 📅 Roadmap
+# Roadmap MVP
 
 - [x] Levantamento de requisitos
 - [x] Modelagem da arquitetura
@@ -211,7 +223,6 @@ npm run dev
 - [ ] Cadastro de usuários
 - [ ] Cadastro de lojas
 - [ ] Cadastro de produtos
-- [ ] Dashboard Administrativo
 - [ ] Dashboard do Lojista
 - [ ] Upload de imagens
 - [ ] Carrinho de compras
@@ -221,48 +232,28 @@ npm run dev
 
 ---
 
-# 🎯 Objetivos
+# Documentação
 
-- Democratizar o comércio eletrônico.
-- Facilitar a digitalização de pequenos empreendedores.
-- Desenvolver uma plataforma escalável.
-- Aplicar boas práticas de Engenharia de Software.
-- Construir um sistema seguro e preparado para crescimento.
-
----
-
-# 📚 Documentação
-
-- Arquitetura C4
+- Diagramas C4
+- Arquitetura da aplicação
 - Levantamento de Requisitos
+- Mapa de Riscos
 - Protótipos da Interface
-- Modelagem do Banco de Dados
 - Relatórios Técnicos
+(Em pasta /docs)
 
 ---
 
-# 👨‍💻 Equipe
+# Equipe
 
 | Nome | GitHub |
 |-------|--------|
-| Gabriel Vitório Gonçalves |  |
-| Lucas Leal de Oliveira |  |
-| Yuri David Arins Cidral | |
+| Gabriel Vitório Gonçalves | @GabrielVitorioGoncalves |
+| Lucas Leal de Oliveira    | @Lucas-Leal-Oliveira05 | 
+| Yuri David Arins Cidral   | @YuriDavid1 |
 
 ---
 
-# 📄 Licença
+## Licença
 
-Este projeto está licenciado sob a licença **MIT**.
-
----
-
-<div align="center">
-
-### ⭐ Gostou do projeto?
-
-Se este projeto foi útil para você, considere deixar uma estrela no repositório.
-
-Desenvolvido por **Gabriel Vitório Gonçalves**, **Lucas Leal de Oliveira** e **Yuri David Arins Cidral**.
-
-</div>
+Este projeto possui fins acadêmicos e foi desenvolvido como atividade extensionista do curso de Engenharia de Software do Centro Universitário Católica de Santa Catarina.
