@@ -7,7 +7,14 @@ const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_ANON_KEY || '';
 
 if (!supabaseUrl || !supabaseKey) {
-  console.warn('⚠️ Atenção: Configure SUPABASE_URL e SUPABASE_ANON_KEY no arquivo .env');
+  throw new Error('Configure SUPABASE_URL e SUPABASE_ANON_KEY antes de iniciar a API');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export function createSupabaseClient(accessToken?: string) {
+  return createClient(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    ...(accessToken ? { global: { headers: { Authorization: `Bearer ${accessToken}` } } } : {})
+  });
+}
+
+export const supabase = createSupabaseClient();
