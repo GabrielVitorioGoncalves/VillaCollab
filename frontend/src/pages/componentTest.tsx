@@ -21,9 +21,9 @@ import { ProductGrid } from "../components/marketplace/productGrid";
 import {
   StoreCard,
   type Store,
-} from "../components/store/storeCard";
+} from "../components/marketplace/storeCard";
 
-import { StoreGrid } from "../components/store/storeGrid";
+import { StoreGrid } from "../components/marketplace/storeGrid";
 
 import { Price } from "../components/marketplace/price";
 

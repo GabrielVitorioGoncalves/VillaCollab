@@ -1,9 +1,9 @@
-import { Badge } from "../ui/badge";
-import { Card } from "../ui/card";
+import { ShoppingCart } from "lucide-react";
 
-import { AddToCartButton } from "./addCartButton";
-import { ProductImage } from "./productImage";
-import { ProductInfo } from "./productInfo";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
+import { Price } from "./price";
 
 export interface Product {
   id: string;
@@ -41,16 +41,35 @@ export function ProductCard({
 
   return (
     <Card className="group overflow-hidden transition-shadow duration-200 hover:shadow-md">
+
       {/* Imagem */}
       <button
         type="button"
         onClick={() => onView?.(product)}
         className="relative block w-full cursor-pointer"
       >
-        <ProductImage
-          image={image}
-          alt={name}
-        />
+        <div className="aspect-square overflow-hidden bg-background">
+
+          {image ? (
+            <img
+              src={image}
+              alt={name}
+              className="
+                h-full
+                w-full
+                object-cover
+                transition-transform
+                duration-300
+                group-hover:scale-105
+              "
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-text-secondary">
+              Sem imagem
+            </div>
+          )}
+
+        </div>
 
         {/* Desconto */}
         {discount !== undefined && (
@@ -73,18 +92,37 @@ export function ProductCard({
 
       {/* Informações */}
       <div className="space-y-3 p-4">
-        <ProductInfo
-          name={name}
-          storeName={storeName}
-          category={category}
-          price={price}
-          oldPrice={oldPrice}
+
+        <div>
+          {category && (
+            <p className="mb-1 text-xs text-text-secondary">
+              {category}
+            </p>
+          )}
+
+          <h3 className="line-clamp-2 min-h-10 text-sm font-medium text-text">
+            {name}
+          </h3>
+
+          <p className="mt-1 text-xs text-text-secondary">
+            {storeName}
+          </p>
+        </div>
+
+        <Price
+          value={price}
+          oldValue={oldPrice}
         />
 
-        <AddToCartButton
-          available={available}
+        <Button
+          className="w-full"
+          disabled={!available}
           onClick={() => onAddToCart?.(product)}
-        />
+        >
+          <ShoppingCart size={17} />
+          {available ? "Adicionar ao carrinho" : "Indisponível"}
+        </Button>
+
       </div>
     </Card>
   );
