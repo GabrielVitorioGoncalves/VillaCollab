@@ -1,18 +1,26 @@
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { Layout } from "./components/layout/userLayout";
 
+import { Auth } from "./pages/auth";
+
+//users
+import { Home } from "./pages/users/home";
+import { StorePage} from "./pages/users/storePage"
 
 function App() {
   return (
-    <main className="min-h-screen bg-background p-8">
-      <div className="mx-auto max-w-3xl space-y-8">
+    <BrowserRouter>
+      <Routes>
+        {/* Autenticação */}
+        <Route path="/login" element={<Auth />} />
 
-        <section>
-          <h1 className="text-3xl font-bold text-text">
-            VillaCollab
-          </h1>
-        </section>
-
-      </div>
-    </main>
+        {/*Layout de usuário */}
+        <Route element={<Layout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/paginaLoja/:id" element={<StorePage />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }
 
