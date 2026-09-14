@@ -6,17 +6,18 @@ export const checkHealth = async (_req: Request, res: Response): Promise<void> =
     // Validação de consulta na tabela de lojas do Supabase
     const { error } = await supabase.from('lojas').select('id').limit(1);
 
-    res.status(200).json({
-      status: 'ok',
+    res.status(error ? 503 : 200).json({
+      status: error ? 'error' : 'ok',
       service: 'Villa Collab API',
       timestamp: new Date().toISOString(),
-      database: error ? `Supabase conectado (aviso: ${error.message})` : 'Supabase conectado com sucesso'
+      database: error ? 'unavailable' : 'available'
     });
-  } catch (err: any) {
-    res.status(500).json({
+  } catch {
+    res.status(503).json({
       status: 'error',
-      message: 'Erro interno ao consultar serviço',
-      error: err.message
+      service: 'Villa Collab API',
+      timestamp: new Date().toISOString(),
+      database: 'unavailable'
     });
   }
 };
