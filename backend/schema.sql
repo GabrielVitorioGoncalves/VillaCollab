@@ -26,3 +26,24 @@ CREATE TABLE IF NOT EXISTS public.produtos (
     estoque INT DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- 4. Tabela de Pedidos
+CREATE TABLE IF NOT EXISTS public.pedidos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    usuario_id UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+    loja_id UUID NOT NULL REFERENCES public.lojas(id) ON DELETE CASCADE,
+    status VARCHAR(50) NOT NULL DEFAULT 'pendente',
+    total DECIMAL(10, 2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 5. Itens dos Pedidos
+CREATE TABLE IF NOT EXISTS public.itens_pedido (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    pedido_id UUID NOT NULL REFERENCES public.pedidos(id) ON DELETE CASCADE,
+    produto_id UUID NOT NULL REFERENCES public.produtos(id) ON DELETE RESTRICT,
+    quantidade INT NOT NULL CHECK (quantidade > 0),
+    preco_unitario DECIMAL(10, 2) NOT NULL CHECK (preco_unitario >= 0),
+    subtotal DECIMAL(10, 2) NOT NULL CHECK (subtotal >= 0)
+);
