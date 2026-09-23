@@ -153,7 +153,7 @@ export function Auth({
                       onChange={(event) =>
                         setName(event.target.value)
                       }
-                      placeholder="Ex: Jô Soares"
+                      placeholder="Ex: Maria"
                       className="
                         h-[52px]
                         rounded-[8px]
