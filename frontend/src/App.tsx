@@ -9,6 +9,9 @@ import { StorePage} from "./pages/users/storePage"
 import { ProductDetail} from "./pages/users/productDetail"
 import { CartPage } from "./pages/users/cartPage"
 import { PaymentPage} from "./pages/users/paymentPage"
+import { ProfilePage} from "./pages/users/profilePage"
+import { MyOrders } from "./pages/users/myOrders"
+import { OrderDetail } from "./pages/users/orderDetail";
 
 function App() {
   return (
@@ -24,6 +27,9 @@ function App() {
           <Route path="user/detalhesProduto/:id" element={<ProductDetail />} />
           <Route path="user/carrinho" element={<CartPage />} />
           <Route path="user/pagamento" element={<PaymentPage />} />
+          <Route path="user/perfil" element={<ProfilePage />} />
+          <Route path="user/pedidos" element={<MyOrders />} />
+          <Route path="user/pedidos/:id" element={<OrderDetail />} />
         </Route>
       </Routes>
     </BrowserRouter>
