@@ -10,8 +10,6 @@ let state;
 let server;
 let base;
 
-// Substitui apenas a fronteira Supabase antes de carregar a aplicação real.
-// Nenhum cliente remoto é criado; controllers, services e schemas são reais.
 function query(table, token) {
   const call = { table, token };
   state.calls.push(call);
@@ -27,7 +25,10 @@ function query(table, token) {
     eq(column, value) {
       call.filter = [column, value];
       (call.filters ??= []).push([column, value]);
-      return column === 'id' || call.update || call.delete ? this : Promise.resolve({ data: state.products, error: state.listError });
+      return column === 'id' || call.update || call.delete ? this : Promise.resolve({
+        data: state.products.filter(product => product.loja_id === value),
+        error: state.listError
+      });
     },
     async maybeSingle() {
       if (call.delete) {
@@ -203,6 +204,13 @@ test('GET produtos público retorna array filtrado por loja', async () => {
   assert.deepEqual(result.body, [validBody]);
   assert.deepEqual(state.calls[0].filter, ['loja_id', lojaId]);
   assert.equal(state.tokens.length, 0);
+});
+test('GET produtos de uma loja não inclui produtos de outra loja', async () => {
+  const produtoOutraLoja = { ...validBody, nome: 'Produto de outra loja', loja_id: outraLoja };
+  state.products = [produtoOutraLoja, validBody];
+  const result = await request(`/api/produtos/loja/${lojaId}`);
+  assert.deepEqual(result, { status: 200, body: [validBody] });
+  assert.deepEqual(state.calls[0].filter, ['loja_id', lojaId]);
 });
 test('GET loja sem produtos retorna array vazio', async () => {
   state.products = [];
@@ -425,6 +433,13 @@ test('DELETE nenhuma linha excluída retorna 404 em vez de sucesso falso', async
   state.deleteMissing = true;
   assert.deepEqual(await deleteProduto(), { status: 404, body: { erro: 'Produto não encontrado.' } });
   assert.equal(state.calls[2].delete, true);
+});
+test('DELETE produto já associado a pedido retorna 409', async () => {
+  produtoExistente();
+  state.deleteError = { code: '23503', message: 'referência interna' };
+  assert.deepEqual(await deleteProduto(), {
+    status: 409, body: { erro: 'Produto associado a pedidos' }
+  });
 });
 for (const failure of ['detailError', 'profileError', 'deleteError']) {
   test(`DELETE falha em ${failure} retorna 500 sem detalhes internos`, async () => {
