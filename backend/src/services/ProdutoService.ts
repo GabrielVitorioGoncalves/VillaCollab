@@ -1,5 +1,6 @@
 import { supabase, createSupabaseClient } from '../config/supabase';
 import { ProdutoInput, ProdutoUpdateInput } from '../schemas/produtoSchema';
+import { ConflictError } from '../errors/ConflictError';
 
 export class ProdutoService {
   async excluirProduto(id: string, userId: string, accessToken: string) {
@@ -23,6 +24,7 @@ export class ProdutoService {
       .eq('loja_id', produto.loja_id)
       .select('id')
       .maybeSingle();
+    if (error?.code === '23503') throw new ConflictError('Produto associado a pedidos');
     if (error) throw new Error('Erro ao excluir produto');
     if (!excluido) return { status: 'not_found' as const };
     return { status: 'deleted' as const };
