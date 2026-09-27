@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
+import { ConflictError } from '../errors/ConflictError';
 
 export function errorHandler(
   err: any, 
@@ -12,6 +13,10 @@ export function errorHandler(
       erro: 'Dados inválidos',
       detalhes: err.flatten().fieldErrors 
     });
+    return;
+  }
+  if (err instanceof ConflictError) {
+    res.status(409).json({ erro: err.message });
     return;
   }
   if (err instanceof SyntaxError && err && 'type' in err && err.type === 'entity.parse.failed') {
