@@ -108,9 +108,7 @@ export function CartItem({
                 Subtotal
               </p>
 
-              <Price
-                value={subtotal}
-              />
+              <Price value={subtotal} />
             </div>
 
             {/* Remover */}
