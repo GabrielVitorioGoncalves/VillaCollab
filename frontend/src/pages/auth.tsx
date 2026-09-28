@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -11,41 +12,65 @@ const googleIcon =
 type AuthMode = "login" | "register";
 
 interface AuthProps {
-  onLogin?: (email: string, password: string) => void;
-  onRegister?: (
-    name: string,
-    email: string,
-    password: string
-  ) => void;
   onForgotPassword?: () => void;
   onGoogleLogin?: () => void;
 }
 
 export function Auth({
-  onLogin,
-  onRegister,
   onForgotPassword,
   onGoogleLogin,
 }: AuthProps) {
+  const navigate = useNavigate();
   const [mode, setMode] = useState<AuthMode>("login");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setError("");
+    setNotice("");
+    setLoading(true);
+    try {
+      const path = mode === "login" ? "/auth/login" : "/auth/register";
+      const apiUrl = (import.meta.env.VITE_API_URL || "http://localhost:3333").replace(/\/+$/, "");
+      const response = await fetch(`${apiUrl}/api${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(mode === "login" ? { email, password } : { nome: name, email, password }),
+      });
+      const result: { erro?: string; access_token?: string; usuario?: { nome: string }; confirmacao_email_pendente?: boolean } =
+        await response.json();
+      if (!response.ok) throw new Error(result.erro || "Não foi possível continuar.");
 
-    if (mode === "login") {
-      onLogin?.(email, password);
-      return;
+      if (mode === "register") {
+        setNotice(result.confirmacao_email_pendente
+          ? "Conta criada! Confirme seu e-mail antes de entrar."
+          : "Conta criada! Agora você pode entrar.");
+        setMode("login");
+        setPassword("");
+      } else {
+        if (!result.access_token || !result.usuario?.nome) throw new Error("Resposta inválida da API.");
+        sessionStorage.setItem("villacollab_token", result.access_token);
+        sessionStorage.setItem("villacollab_user_name", result.usuario.nome);
+        navigate("/user/home", { replace: true });
+      }
+    } catch (caught) {
+      setError(caught instanceof TypeError ? "Não foi possível conectar à API." :
+        caught instanceof Error ? caught.message : "Não foi possível continuar.");
+    } finally {
+      setLoading(false);
     }
-
-    onRegister?.(name, email, password);
   };
 
   const changeMode = (newMode: AuthMode) => {
     setMode(newMode);
+    setError("");
+    setNotice("");
   };
 
   return (
@@ -140,6 +165,8 @@ export function Auth({
               ${mode === "login" ? "pb-[57px] pt-[61px]" : "pb-[61px] pt-[22px]"}
             `}
           >
+            {error && <p role="alert" className="mb-4 text-sm text-red-700">{error}</p>}
+            {notice && <p role="status" className="mb-4 text-sm text-green-700">{notice}</p>}
             {mode === "register" ? (
               /* =========================
                  CADASTRO
@@ -257,6 +284,7 @@ export function Auth({
                 {/* Criar conta */}
                 <Button
                   type="submit"
+                  disabled={loading}
                   className="
                     mt-[17px]
                     h-[52px]
@@ -269,7 +297,7 @@ export function Auth({
                     hover:bg-[#27272A]
                   "
                 >
-                  Criar conta
+                  {loading ? "Aguarde..." : "Criar conta"}
                 </Button>
 
                 {/* Divisor */}
@@ -288,6 +316,8 @@ export function Auth({
                   type="button"
                   variant="outline"
                   onClick={onGoogleLogin}
+                  disabled={!onGoogleLogin}
+                  title={!onGoogleLogin ? "Login com Google ainda não disponível" : undefined}
                   className="
                     h-[53px]
                     w-full
@@ -364,6 +394,8 @@ export function Auth({
                   <button
                     type="button"
                     onClick={onForgotPassword}
+                    disabled={!onForgotPassword}
+                    title={!onForgotPassword ? "Recuperação de senha ainda não disponível" : undefined}
                     className="
                       text-sm
                       text-[#A9A9A9]
@@ -378,6 +410,7 @@ export function Auth({
                 {/* Entrar */}
                 <Button
                   type="submit"
+                  disabled={loading}
                   className="
                     mt-[8px]
                     h-[52px]
@@ -390,7 +423,7 @@ export function Auth({
                     hover:bg-[#27272A]
                   "
                 >
-                  Entrar na conta
+                  {loading ? "Aguarde..." : "Entrar na conta"}
                 </Button>
 
                 {/* Divisor */}
@@ -409,6 +442,8 @@ export function Auth({
                   type="button"
                   variant="outline"
                   onClick={onGoogleLogin}
+                  disabled={!onGoogleLogin}
+                  title={!onGoogleLogin ? "Login com Google ainda não disponível" : undefined}
                   className="
                     h-[53px]
                     w-full
