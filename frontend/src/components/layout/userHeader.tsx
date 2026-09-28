@@ -13,6 +13,7 @@ import { SearchBar } from "../search/searchBar";
 const SCROLL_THRESHOLD = 20;
 
 export function Header() {
+  const userName = sessionStorage.getItem("villacollab_user_name");
   const [visible, setVisible] = useState(true);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
@@ -97,8 +98,8 @@ export function Header() {
 
   const handleLogout = () => {
     setUserMenuOpen(false);
-
-    // Futuramente: logout do Supabase Auth.
+    sessionStorage.removeItem("villacollab_token");
+    sessionStorage.removeItem("villacollab_user_name");
     navigate("/");
   };
 
@@ -202,11 +203,11 @@ export function Header() {
                   font-semibold
                 "
               >
-                L
+                {userName?.charAt(0).toUpperCase() ?? "?"}
               </div>
 
               <span className="hidden text-sm font-medium md:block">
-                Lucas
+                {userName ?? "Entrar"}
               </span>
 
               <ChevronDown
@@ -237,11 +238,11 @@ export function Header() {
                 {/* Informações do usuário */}
                 <div className="border-b border-border px-4 py-3">
                   <p className="text-sm font-semibold text-text">
-                    Teste
+                    {userName ?? "Visitante"}
                   </p>
 
                   <p className="mt-0.5 text-xs text-text-secondary">
-                    Teste@email.com
+                    {userName ? "Conta conectada" : "Faça login para continuar"}
                   </p>
                 </div>
 
