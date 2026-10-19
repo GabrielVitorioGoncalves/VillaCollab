@@ -33,6 +33,7 @@ export function QuantitySelector({
         <button
           type="button"
           onClick={decrease}
+          aria-label="Diminuir quantidade"
           disabled={value <= min}
           className="
             flex
@@ -58,6 +59,7 @@ export function QuantitySelector({
         <button
           type="button"
           onClick={increase}
+          aria-label="Aumentar quantidade"
           disabled={max !== undefined && value >= max}
           className="
             flex
