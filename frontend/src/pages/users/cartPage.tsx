@@ -1,245 +1,57 @@
-import { useMemo, useState } from "react";
-
-import {
-  CartItem,
-  type CartProduct,
-} from "../../components/cart/cartItem";
-
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { CartItem } from "../../components/cart/cartItem";
 import { CartSummary } from "../../components/cart/cartSummary";
-
-interface CartItemData {
-  id: string;
-  product: CartProduct;
-  quantity: number;
-}
-
-const initialCartItems: CartItemData[] = [
-  {
-    id: "cart-1",
-    product: {
-      id: "1",
-      name: "Tênis Casual Urbano",
-      image: "",
-      price: 199.9,
-      storeName: "Urban Store",
-    },
-    quantity: 1,
-  },
-  {
-    id: "cart-2",
-    product: {
-      id: "2",
-      name: "Camiseta Oversized",
-      image: "",
-      price: 89.9,
-      storeName: "Urban Store",
-    },
-    quantity: 2,
-  },
-  {
-    id: "cart-3",
-    product: {
-      id: "3",
-      name: "Mochila Minimalista",
-      image: "",
-      price: 149.9,
-      storeName: "Urban Store",
-    },
-    quantity: 1,
-  },
-];
+import { Price } from "../../components/marketplace/price";
+import { Card } from "../../components/ui/card";
+import { useCart } from "../../contexts/cart-context";
+import { maxQuantity, subtotal } from "../../lib/cart";
 
 export function CartPage() {
-  const [cartItems, setCartItems] =
-    useState<CartItemData[]>(initialCartItems);
+  const cart = useCart();
+  const navigate = useNavigate();
+  const [error, setError] = useState("");
+  const stores = [...new Set(cart.items.map(line => line.product.loja_id))];
 
-  const subtotal = useMemo(() => {
-    return cartItems.reduce(
-      (total, item) =>
-        total + item.product.price * item.quantity,
-      0
-    );
-  }, [cartItems]);
-
-  const shipping = 0;
-
-  function handleQuantityChange(
-    itemId: string,
-    quantity: number
-  ) {
-    setCartItems((current) =>
-      current.map((item) =>
-        item.id === itemId
-          ? {
-              ...item,
-              quantity,
-            }
-          : item
-      )
-    );
+  function change(id: string, quantity: number) {
+    setError("");
+    try { cart.setQuantity(id, quantity); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível alterar a quantidade."); }
   }
 
-  function handleRemove(itemId: string) {
-    setCartItems((current) =>
-      current.filter((item) => item.id !== itemId)
-    );
-  }
-
-  function handleCheckout() {
-    console.log("Finalizar compra:", {
-      items: cartItems,
-      subtotal,
-      shipping,
-      total: subtotal + shipping,
-    });
-  }
-
-  function handleContinueShopping() {
-    console.log("Continuar comprando");
-  }
-
-  if (cartItems.length === 0) {
-    return (
-      <main className="min-h-screen bg-background">
-        <div className="mx-auto w-full max-w-[1240px] px-5 py-10">
-          <div
-            className="
-              rounded-[22px]
-              border
-              border-border
-              bg-surface
-              px-6
-              py-16
-              text-center
-            "
-          >
-            <h1 className="text-2xl font-bold text-text">
-              Seu carrinho está vazio
-            </h1>
-
-            <p className="mt-2 text-sm text-text-secondary">
-              Adicione produtos ao carrinho para continuar.
-            </p>
-
-            <button
-              type="button"
-              onClick={handleContinueShopping}
-              className="
-                mt-6
-                rounded-lg
-                bg-primary
-                px-5
-                py-3
-                text-sm
-                font-medium
-                text-white
-                transition-colors
-                hover:bg-primary-hover
-              "
-            >
-              Continuar comprando
-            </button>
-          </div>
+  return <main className="min-h-screen bg-background">
+    <div className="mx-auto w-full max-w-[1240px] px-5 py-10">
+      <h1 className="text-3xl font-bold text-text">Carrinho</h1>
+      <p className="mt-2 text-sm text-text-secondary">Revise seus produtos. Os pedidos são separados por loja.</p>
+      {error && <p role="alert" className="mt-4 text-danger">{error}</p>}
+      {cart.persistenceError && <p role="alert" className="mt-4 text-warning">{cart.persistenceError}</p>}
+      {!cart.items.length ? <Card className="mt-8 p-10 text-center">
+        <h2 className="text-xl font-semibold">Seu carrinho está vazio</h2>
+        <p className="mt-2 text-text-secondary">Adicione produtos de uma loja para continuar.</p>
+        <Link to="/user/home" className="mt-6 inline-block rounded-lg bg-primary px-5 py-3 text-white">Continuar comprando</Link>
+      </Card> : <>
+        <div className="mt-8 space-y-8">{stores.map(storeId => {
+          const lines = cart.items.filter(line => line.product.loja_id === storeId);
+          return <section key={storeId} aria-label={`Carrinho da ${lines[0].storeName}`}
+            className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <Card className="space-y-4 p-5">
+              <h2 className="text-lg font-semibold"><Link to={`/user/paginaLoja/${storeId}`} className="hover:underline">{lines[0].storeName}</Link></h2>
+              {lines.map(line => <CartItem key={line.product.id}
+                product={{ id: line.product.id, name: line.product.nome, price: Number(line.product.preco), storeName: line.storeName }}
+                quantity={line.quantity} maxQuantity={maxQuantity(line.product)}
+                onQuantityChange={quantity => change(line.product.id, quantity)} onRemove={() => cart.remove(line.product.id)} />)}
+            </Card>
+            <aside><CartSummary subtotal={subtotal(lines)} showShipping={false} checkoutLabel="Revisar pedido"
+              onCheckout={() => navigate(`/user/pagamento?loja=${storeId}`)} />
+              <p className="mt-3 text-xs text-text-secondary">Os preços e o estoque serão conferidos na revisão.</p>
+            </aside>
+          </section>;
+        })}</div>
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-5">
+          <Link to="/user/home" className="text-sm underline">← Continuar comprando</Link>
+          <div className="flex items-center gap-3"><span>Total do carrinho ({cart.count} itens)</span><Price value={subtotal(cart.items)} size="lg" /></div>
         </div>
-      </main>
-    );
-  }
-
-  return (
-    <main className="min-h-screen bg-background">
-      <div className="mx-auto w-full max-w-[1240px] px-5 py-10">
-        {/* Cabeçalho */}
-        <section className="mb-8">
-          <h1 className="text-3xl font-bold text-text">
-            Carrinho
-          </h1>
-
-          <p className="mt-1 text-sm text-text-secondary">
-            Revise seus produtos antes de finalizar a compra.
-          </p>
-        </section>
-
-        {/* Conteúdo */}
-        <section
-          className="
-            grid
-            gap-8
-            lg:grid-cols-[minmax(0,1fr)_360px]
-            lg:items-start
-          "
-        >
-          {/* Lista de produtos */}
-          <div className="space-y-4">
-            <div
-              className="
-                rounded-[22px]
-                border
-                border-border
-                bg-surface
-                p-6
-              "
-            >
-              <div className="mb-5">
-                <h2 className="text-lg font-semibold text-text">
-                  Produtos
-                </h2>
-
-                <p className="mt-1 text-sm text-text-secondary">
-                  {cartItems.length}{" "}
-                  {cartItems.length === 1
-                    ? "item no carrinho"
-                    : "itens no carrinho"}
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                {cartItems.map((item) => (
-                  <CartItem
-                    key={item.id}
-                    product={item.product}
-                    quantity={item.quantity}
-                    onQuantityChange={(quantity) =>
-                      handleQuantityChange(
-                        item.id,
-                        quantity
-                      )
-                    }
-                    onRemove={() =>
-                      handleRemove(item.id)
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Continuar comprando */}
-            <button
-              type="button"
-              onClick={handleContinueShopping}
-              className="
-                text-sm
-                font-medium
-                text-text
-                underline
-                underline-offset-4
-                transition-opacity
-                hover:opacity-60
-              "
-            >
-              ← Continuar comprando
-            </button>
-          </div>
-
-          {/* Resumo */}
-          <aside className="lg:sticky lg:top-24">
-            <CartSummary
-              subtotal={subtotal}
-              shipping={shipping}
-              onCheckout={handleCheckout}
-            />
-          </aside>
-        </section>
-      </div>
-    </main>
-  );
+      </>}
+    </div>
+  </main>;
 }

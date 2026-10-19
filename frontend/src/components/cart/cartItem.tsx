@@ -18,6 +18,7 @@ interface CartItemProps {
   quantity: number;
   onQuantityChange?: (quantity: number) => void;
   onRemove?: () => void;
+  maxQuantity?: number;
 }
 
 export function CartItem({
@@ -25,6 +26,7 @@ export function CartItem({
   quantity,
   onQuantityChange,
   onRemove,
+  maxQuantity,
 }: CartItemProps) {
   const subtotal = product.price * quantity;
 
@@ -35,12 +37,12 @@ export function CartItem({
   };
 
   const increaseQuantity = () => {
-    onQuantityChange?.(quantity + 1);
+    if (maxQuantity === undefined || quantity < maxQuantity) onQuantityChange?.(quantity + 1);
   };
 
   return (
-    <Card className="p-4">
-      <div className="flex gap-4">
+    <Card className="min-w-0 p-4">
+      <div className="flex flex-col gap-4 sm:flex-row">
         {/* Imagem */}
         <div className="w-24 shrink-0">
           <ProductImage
@@ -65,12 +67,13 @@ export function CartItem({
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             {/* Quantidade */}
             <div className="flex items-center rounded-lg border border-border">
               <button
                 type="button"
                 onClick={decreaseQuantity}
+                aria-label={`Diminuir quantidade de ${product.name}`}
                 disabled={quantity <= 1}
                 className="
                   flex h-9 w-9 items-center justify-center
@@ -91,11 +94,14 @@ export function CartItem({
               <button
                 type="button"
                 onClick={increaseQuantity}
+                aria-label={`Aumentar quantidade de ${product.name}`}
+                disabled={maxQuantity !== undefined && quantity >= maxQuantity}
                 className="
                   flex h-9 w-9 items-center justify-center
                   text-text
                   transition-colors
                   hover:bg-background-secondary
+                  disabled:opacity-40
                 "
               >
                 <Plus size={16} />

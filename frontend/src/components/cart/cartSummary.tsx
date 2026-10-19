@@ -6,12 +6,18 @@ interface CartSummaryProps {
   subtotal: number;
   shipping?: number;
   onCheckout?: () => void;
+  checkoutLabel?: string;
+  disabled?: boolean;
+  showShipping?: boolean;
 }
 
 export function CartSummary({
   subtotal,
   shipping = 0,
   onCheckout,
+  checkoutLabel = "Finalizar compra",
+  disabled = false,
+  showShipping = true,
 }: CartSummaryProps) {
   const total = subtotal + shipping;
 
@@ -22,15 +28,15 @@ export function CartSummary({
       </h2>
 
       <div className="mt-5 space-y-3">
-        <div className="flex items-center justify-between">
+        {showShipping && <div className="flex items-center justify-between">
           <span className="text-sm text-text-secondary">
             Subtotal
           </span>
 
           <Price value={subtotal} />
-        </div>
+        </div>}
 
-        <div className="flex items-center justify-between">
+        {showShipping && <div className="flex items-center justify-between">
           <span className="text-sm text-text-secondary">
             Frete
           </span>
@@ -42,7 +48,7 @@ export function CartSummary({
           ) : (
             <Price value={shipping} />
           )}
-        </div>
+        </div>}
 
         <div className="border-t border-border pt-3">
           <div className="flex items-center justify-between">
@@ -60,8 +66,9 @@ export function CartSummary({
         <Button
           className="mt-3 w-full"
           onClick={onCheckout}
+          disabled={disabled}
         >
-          Finalizar compra
+          {checkoutLabel}
         </Button>
       </div>
     </Card>

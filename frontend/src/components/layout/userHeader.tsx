@@ -9,10 +9,12 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { SearchBar } from "../search/searchBar";
+import { useCart } from "../../contexts/cart-context";
 
 const SCROLL_THRESHOLD = 20;
 
 export function Header() {
+  const { count } = useCart();
   const userName = sessionStorage.getItem("villacollab_user_name");
   const [visible, setVisible] = useState(true);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -93,7 +95,7 @@ export function Header() {
       return;
     }
 
-    console.log("Pesquisar lojas:", search);
+    navigate(`/user/home?busca=${encodeURIComponent(search)}`);
   };
 
   const handleLogout = () => {
@@ -137,7 +139,7 @@ export function Header() {
         </button>
 
         {/* Busca de lojas */}
-        <div className="absolute left-1/2 w-full max-w-sm -translate-x-1/2">
+        <div className="absolute left-1/2 hidden w-full max-w-sm -translate-x-1/2 md:block">
           <SearchBar
             value={searchValue}
             onChange={setSearchValue}
@@ -154,6 +156,7 @@ export function Header() {
             aria-label="Carrinho"
             onClick={() => navigate("/user/carrinho")}
             className="
+              relative
               flex
               h-10
               w-10
@@ -166,6 +169,7 @@ export function Header() {
             "
           >
             <ShoppingCart size={22} />
+            {count > 0 && <span aria-label={`${count} itens no carrinho`} className="absolute -right-1 -top-1 rounded-full bg-primary px-1.5 text-xs text-white">{count}</span>}
           </button>
 
           {/* Usuário */}
