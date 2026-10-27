@@ -1,52 +1,185 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { FormField } from "../../components/ui/formField";
 import { Input } from "../../components/ui/input";
+import { RequestStatus } from "../../components/ui/requestStatus";
+import { useRequest } from "../../hooks/useRequest";
+import {
+  formatCep,
+  toAddressForm,
+  toEndereco,
+  validateAddress,
+  type AddressErrors,
+  type AddressForm,
+} from "../../lib/address";
+import { errorMessage } from "../../lib/api";
+import { changeEmail, changePassword, getMe, updateMe } from "../../lib/services";
+import { getSession, updateSessionUser } from "../../lib/session";
+import type { Usuario } from "../../types/api";
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return (first + last).toUpperCase() || "?";
+}
+
+interface Feedback {
+  type: "success" | "error";
+  text: string;
+}
+
+function FeedbackText({ feedback }: { feedback: Feedback | null }) {
+  if (!feedback) return null;
+  return (
+    <p
+      role={feedback.type === "error" ? "alert" : "status"}
+      className={`mt-4 text-sm ${feedback.type === "error" ? "text-danger" : "text-green-700"}`}
+    >
+      {feedback.text}
+    </p>
+  );
+}
 
 export function ProfilePage() {
+  const navigate = useNavigate();
+  const addressRef = useRef<HTMLDivElement>(null);
+  const profile = useRequest("perfil", getMe);
+  const user = profile.data;
+
   const [editingPersonal, setEditingPersonal] = useState(false);
   const [editingAddress, setEditingAddress] = useState(false);
+  const [editingPassword, setEditingPassword] = useState(false);
 
-  const [name, setName] = useState("Teste");
-  const [email, setEmail] = useState("teste@email.com");
-  const [phone, setPhone] = useState("(47) 99999-9999");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [personalFeedback, setPersonalFeedback] = useState<Feedback | null>(null);
+  const [savingPersonal, setSavingPersonal] = useState(false);
 
-  const [cep, setCep] = useState("89200-000");
-  const [street, setStreet] = useState("Rua Exemplo");
-  const [number, setNumber] = useState("123");
-  const [complement, setComplement] = useState("");
-  const [neighborhood, setNeighborhood] = useState("Centro");
-  const [city, setCity] = useState("Joinville");
-  const [state, setState] = useState("SC");
+  const [address, setAddress] = useState<AddressForm>(toAddressForm());
+  const [addressErrors, setAddressErrors] = useState<AddressErrors>({});
+  const [addressFeedback, setAddressFeedback] = useState<Feedback | null>(null);
+  const [savingAddress, setSavingAddress] = useState(false);
 
-  const handleSavePersonal = () => {
-    console.log("Informações pessoais:", {
-      name,
-      email,
-      phone,
-    });
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordFeedback, setPasswordFeedback] = useState<Feedback | null>(null);
+  const [savingPassword, setSavingPassword] = useState(false);
 
-    setEditingPersonal(false);
+  const currentEmail = user?.email ?? getSession()?.email ?? "";
+
+  const applyUser = (updated: Usuario) => {
+    profile.mutate(updated);
+    updateSessionUser(updated);
   };
 
-  const handleSaveAddress = () => {
-    console.log("Endereço:", {
-      cep,
-      street,
-      number,
-      complement,
-      neighborhood,
-      city,
-      state,
-    });
-
-    setEditingAddress(false);
+  const startEditingPersonal = () => {
+    if (!user) return;
+    setName(user.nome);
+    setEmail(currentEmail);
+    setPhone(user.telefone ?? "");
+    setPersonalFeedback(null);
+    setEditingPersonal(true);
   };
 
-  const handleChangePassword = () => {
-    console.log("Alterar senha");
+  const startEditingAddress = () => {
+    if (!user) return;
+    setAddress(toAddressForm(user.endereco));
+    setAddressErrors({});
+    setAddressFeedback(null);
+    setEditingAddress(true);
+  };
+
+  const handleSavePersonal = async () => {
+    if (!user) return;
+    if (name.trim().length < 2) {
+      setPersonalFeedback({ type: "error", text: "Informe seu nome completo." });
+      return;
+    }
+    if (!/^[0-9()+\-\s]*$/.test(phone) || phone.trim().length > 20) {
+      setPersonalFeedback({ type: "error", text: "Telefone com até 20 números." });
+      return;
+    }
+
+    setSavingPersonal(true);
+    setPersonalFeedback(null);
+    try {
+      const nameChanged = name.trim() !== user.nome;
+      const phoneChanged = phone.trim() !== (user.telefone ?? "");
+      if (nameChanged || phoneChanged) {
+        applyUser(await updateMe({ nome: name.trim(), telefone: phone.trim() || null }));
+      }
+
+      const emailChanged = email.trim().toLowerCase() !== currentEmail.toLowerCase();
+      if (emailChanged) {
+        await changeEmail(email.trim());
+        setPersonalFeedback({
+          type: "success",
+          text: `Enviamos um link para ${email.trim()}. O e-mail muda depois da confirmação.`,
+        });
+      } else {
+        setPersonalFeedback({ type: "success", text: "Dados atualizados." });
+      }
+      setEditingPersonal(false);
+    } catch (caught) {
+      setPersonalFeedback({ type: "error", text: errorMessage(caught) });
+    } finally {
+      setSavingPersonal(false);
+    }
+  };
+
+  const updateAddressField = (field: keyof AddressForm, value: string) => {
+    setAddress((current) => ({ ...current, [field]: field === "cep" ? formatCep(value) : value }));
+    setAddressErrors((current) => ({ ...current, [field]: undefined }));
+  };
+
+  const handleSaveAddress = async () => {
+    const errors = validateAddress(address, false);
+    setAddressErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    setSavingAddress(true);
+    setAddressFeedback(null);
+    try {
+      applyUser(await updateMe({ endereco: toEndereco(address, false) }));
+      setEditingAddress(false);
+      setAddressFeedback({ type: "success", text: "Endereço salvo. Ele vai preenchido nas próximas compras." });
+    } catch (caught) {
+      setAddressFeedback({ type: "error", text: errorMessage(caught) });
+    } finally {
+      setSavingAddress(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (newPassword.length < 8) {
+      setPasswordFeedback({ type: "error", text: "A nova senha precisa ter pelo menos 8 caracteres." });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordFeedback({ type: "error", text: "A confirmação não bate com a nova senha." });
+      return;
+    }
+
+    setSavingPassword(true);
+    setPasswordFeedback(null);
+    try {
+      await changePassword(currentPassword, newPassword);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setEditingPassword(false);
+      setPasswordFeedback({ type: "success", text: "Senha alterada." });
+    } catch (caught) {
+      setPasswordFeedback({ type: "error", text: errorMessage(caught) });
+    } finally {
+      setSavingPassword(false);
+    }
   };
 
   return (
@@ -59,6 +192,14 @@ export function ProfilePage() {
           </h1>
         </section>
 
+        {!user ? (
+          <RequestStatus
+            loading={profile.loading}
+            error={profile.error}
+            onRetry={profile.reload}
+            loadingText="Carregando perfil..."
+          />
+        ) : (
         <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
           {/* Menu lateral */}
           <aside>
@@ -78,21 +219,22 @@ export function ProfilePage() {
                     text-text
                   "
                 >
-                  LL
+                  {initials(user.nome)}
                 </div>
 
                 <h2 className="mt-3 font-semibold text-text">
-                  {name}
+                  {user.nome}
                 </h2>
 
                 <p className="mt-1 text-xs text-text-secondary">
-                  {email}
+                  {currentEmail}
                 </p>
               </div>
 
               <nav className="mt-4 space-y-1">
                 <button
                   type="button"
+                  aria-current="page"
                   className="
                     w-full
                     rounded-lg
@@ -110,6 +252,7 @@ export function ProfilePage() {
 
                 <button
                   type="button"
+                  onClick={() => navigate("/user/pedidos")}
                   className="
                     w-full
                     rounded-lg
@@ -128,6 +271,9 @@ export function ProfilePage() {
 
                 <button
                   type="button"
+                  onClick={() =>
+                    addressRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  }
                   className="
                     w-full
                     rounded-lg
@@ -165,7 +311,7 @@ export function ProfilePage() {
                 {!editingPersonal && (
                   <Button
                     variant="outline"
-                    onClick={() => setEditingPersonal(true)}
+                    onClick={startEditingPersonal}
                   >
                     Editar
                   </Button>
@@ -181,6 +327,7 @@ export function ProfilePage() {
                     >
                       <Input
                         value={name}
+                        autoComplete="name"
                         onChange={(event) =>
                           setName(event.target.value)
                         }
@@ -190,10 +337,12 @@ export function ProfilePage() {
                     <FormField
                       label="E-mail"
                       required
+                      helperText="Ao trocar, enviamos um link de confirmação para o novo e-mail."
                     >
                       <Input
                         type="email"
                         value={email}
+                        autoComplete="email"
                         onChange={(event) =>
                           setEmail(event.target.value)
                         }
@@ -203,6 +352,9 @@ export function ProfilePage() {
                     <FormField label="Telefone">
                       <Input
                         value={phone}
+                        type="tel"
+                        autoComplete="tel"
+                        placeholder="(47) 99999-9999"
                         onChange={(event) =>
                           setPhone(event.target.value)
                         }
@@ -212,6 +364,7 @@ export function ProfilePage() {
                     <div className="flex justify-end gap-3 pt-2">
                       <Button
                         variant="outline"
+                        disabled={savingPersonal}
                         onClick={() =>
                           setEditingPersonal(false)
                         }
@@ -221,8 +374,9 @@ export function ProfilePage() {
 
                       <Button
                         onClick={handleSavePersonal}
+                        disabled={savingPersonal}
                       >
-                        Salvar alterações
+                        {savingPersonal ? "Salvando..." : "Salvar alterações"}
                       </Button>
                     </div>
                   </div>
@@ -234,7 +388,7 @@ export function ProfilePage() {
                       </p>
 
                       <p className="mt-1 text-sm font-medium text-text">
-                        {name}
+                        {user.nome}
                       </p>
                     </div>
 
@@ -244,7 +398,7 @@ export function ProfilePage() {
                       </p>
 
                       <p className="mt-1 text-sm font-medium text-text">
-                        {email}
+                        {currentEmail || "—"}
                       </p>
                     </div>
 
@@ -254,15 +408,18 @@ export function ProfilePage() {
                       </p>
 
                       <p className="mt-1 text-sm font-medium text-text">
-                        {phone}
+                        {user.telefone || "—"}
                       </p>
                     </div>
                   </div>
                 )}
+
+                <FeedbackText feedback={personalFeedback} />
               </div>
             </Card>
 
             {/* Endereço */}
+            <div ref={addressRef} className="scroll-mt-24">
             <Card className="p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -278,9 +435,9 @@ export function ProfilePage() {
                 {!editingAddress && (
                   <Button
                     variant="outline"
-                    onClick={() => setEditingAddress(true)}
+                    onClick={startEditingAddress}
                   >
-                    Editar
+                    {user.endereco ? "Editar" : "Adicionar"}
                   </Button>
                 )}
               </div>
@@ -292,11 +449,16 @@ export function ProfilePage() {
                       <FormField
                         label="CEP"
                         required
+                        error={addressErrors.cep}
                       >
                         <Input
-                          value={cep}
+                          value={address.cep}
+                          error={!!addressErrors.cep}
+                          inputMode="numeric"
+                          autoComplete="postal-code"
+                          placeholder="00000-000"
                           onChange={(event) =>
-                            setCep(event.target.value)
+                            updateAddressField("cep", event.target.value)
                           }
                         />
                       </FormField>
@@ -304,11 +466,14 @@ export function ProfilePage() {
                       <FormField
                         label="Rua"
                         required
+                        error={addressErrors.rua}
                       >
                         <Input
-                          value={street}
+                          value={address.rua}
+                          error={!!addressErrors.rua}
+                          autoComplete="address-line1"
                           onChange={(event) =>
-                            setStreet(event.target.value)
+                            updateAddressField("rua", event.target.value)
                           }
                         />
                       </FormField>
@@ -318,20 +483,23 @@ export function ProfilePage() {
                       <FormField
                         label="Número"
                         required
+                        error={addressErrors.numero}
                       >
                         <Input
-                          value={number}
+                          value={address.numero}
+                          error={!!addressErrors.numero}
                           onChange={(event) =>
-                            setNumber(event.target.value)
+                            updateAddressField("numero", event.target.value)
                           }
                         />
                       </FormField>
 
                       <FormField label="Complemento">
                         <Input
-                          value={complement}
+                          value={address.complemento}
+                          autoComplete="address-line2"
                           onChange={(event) =>
-                            setComplement(event.target.value)
+                            updateAddressField("complemento", event.target.value)
                           }
                           placeholder="Apartamento, bloco, casa..."
                         />
@@ -341,11 +509,13 @@ export function ProfilePage() {
                     <FormField
                       label="Bairro"
                       required
+                      error={addressErrors.bairro}
                     >
                       <Input
-                        value={neighborhood}
+                        value={address.bairro}
+                        error={!!addressErrors.bairro}
                         onChange={(event) =>
-                          setNeighborhood(event.target.value)
+                          updateAddressField("bairro", event.target.value)
                         }
                       />
                     </FormField>
@@ -354,11 +524,14 @@ export function ProfilePage() {
                       <FormField
                         label="Cidade"
                         required
+                        error={addressErrors.cidade}
                       >
                         <Input
-                          value={city}
+                          value={address.cidade}
+                          error={!!addressErrors.cidade}
+                          autoComplete="address-level2"
                           onChange={(event) =>
-                            setCity(event.target.value)
+                            updateAddressField("cidade", event.target.value)
                           }
                         />
                       </FormField>
@@ -366,12 +539,15 @@ export function ProfilePage() {
                       <FormField
                         label="Estado"
                         required
+                        error={addressErrors.estado}
                       >
                         <Input
-                          value={state}
+                          value={address.estado}
+                          error={!!addressErrors.estado}
                           maxLength={2}
+                          autoComplete="address-level1"
                           onChange={(event) =>
-                            setState(event.target.value)
+                            updateAddressField("estado", event.target.value.toUpperCase())
                           }
                         />
                       </FormField>
@@ -380,6 +556,7 @@ export function ProfilePage() {
                     <div className="flex justify-end gap-3 pt-2">
                       <Button
                         variant="outline"
+                        disabled={savingAddress}
                         onClick={() =>
                           setEditingAddress(false)
                         }
@@ -389,38 +566,46 @@ export function ProfilePage() {
 
                       <Button
                         onClick={handleSaveAddress}
+                        disabled={savingAddress}
                       >
-                        Salvar endereço
+                        {savingAddress ? "Salvando..." : "Salvar endereço"}
                       </Button>
                     </div>
                   </div>
-                ) : (
+                ) : user.endereco ? (
                   <div className="rounded-xl border border-border bg-background-secondary p-4">
                     <p className="font-medium text-text">
-                      {street}, {number}
+                      {user.endereco.rua}, {user.endereco.numero}
                     </p>
 
-                    {complement && (
+                    {user.endereco.complemento && (
                       <p className="mt-1 text-sm text-text-secondary">
-                        {complement}
+                        {user.endereco.complemento}
                       </p>
                     )}
 
                     <p className="mt-1 text-sm text-text-secondary">
-                      {neighborhood}
+                      {user.endereco.bairro}
                     </p>
 
                     <p className="mt-1 text-sm text-text-secondary">
-                      {city} - {state}
+                      {user.endereco.cidade} - {user.endereco.estado}
                     </p>
 
                     <p className="mt-1 text-sm text-text-secondary">
-                      CEP {cep}
+                      CEP {user.endereco.cep}
                     </p>
                   </div>
+                ) : (
+                  <p className="text-sm text-text-secondary">
+                    Nenhum endereço cadastrado ainda.
+                  </p>
                 )}
+
+                <FeedbackText feedback={addressFeedback} />
               </div>
             </Card>
+            </div>
 
             {/* Segurança */}
             <Card className="p-6">
@@ -435,16 +620,79 @@ export function ProfilePage() {
                   </p>
                 </div>
 
-                <Button
-                  variant="outline"
-                  onClick={handleChangePassword}
-                >
-                  Alterar senha
-                </Button>
+                {!editingPassword && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setPasswordFeedback(null);
+                      setEditingPassword(true);
+                    }}
+                  >
+                    Alterar senha
+                  </Button>
+                )}
               </div>
+
+              {editingPassword && (
+                <div className="mt-6 space-y-5">
+                  <FormField label="Senha atual" required>
+                    <Input
+                      type="password"
+                      value={currentPassword}
+                      autoComplete="current-password"
+                      onChange={(event) => setCurrentPassword(event.target.value)}
+                    />
+                  </FormField>
+
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <FormField label="Nova senha" required helperText="Mínimo 8 caracteres.">
+                      <Input
+                        type="password"
+                        value={newPassword}
+                        autoComplete="new-password"
+                        onChange={(event) => setNewPassword(event.target.value)}
+                      />
+                    </FormField>
+
+                    <FormField label="Confirmar nova senha" required>
+                      <Input
+                        type="password"
+                        value={confirmPassword}
+                        autoComplete="new-password"
+                        onChange={(event) => setConfirmPassword(event.target.value)}
+                      />
+                    </FormField>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-2">
+                    <Button
+                      variant="outline"
+                      disabled={savingPassword}
+                      onClick={() => {
+                        setEditingPassword(false);
+                        setCurrentPassword("");
+                        setNewPassword("");
+                        setConfirmPassword("");
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+
+                    <Button
+                      onClick={handleChangePassword}
+                      disabled={savingPassword || !currentPassword}
+                    >
+                      {savingPassword ? "Salvando..." : "Salvar nova senha"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <FeedbackText feedback={passwordFeedback} />
             </Card>
           </div>
         </div>
+        )}
       </div>
     </main>
   );

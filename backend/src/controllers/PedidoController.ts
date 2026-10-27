@@ -1,37 +1,52 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { createSupabaseClient } from '../config/supabase';
+import { rpcFailure } from '../errors/rpcFailure';
+import { codigoSchema, enderecoSchema } from '../schemas/catalogoSchema';
 
 const idSchema = z.object({ id: z.uuid() });
 const lojaSchema = z.object({ loja_id: z.uuid() });
+
+function chaveItem(item: { produto_id: string; variacoes?: Record<string, string> }) {
+  const variacoes = Object.entries(item.variacoes ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  return `${item.produto_id}|${JSON.stringify(variacoes)}`;
+}
+
 const createSchema = z.object({
   loja_id: z.uuid(),
-  itens: z.array(z.object({ produto_id: z.uuid(), quantidade: z.number().int().min(1).max(1000) }).strict())
-    .min(1).max(50)
-}).strict().refine(value => new Set(value.itens.map(item => item.produto_id)).size === value.itens.length,
-  'Não repita produtos no pedido');
-const statusSchema = z.object({ status: z.enum(['aceito', 'concluido', 'cancelado']) }).strict();
-const select = 'id, usuario_id, loja_id, status, total, created_at, updated_at, itens_pedido(id, produto_id, quantidade, preco_unitario, subtotal)';
+  itens: z.array(z.object({
+    produto_id: z.uuid(),
+    quantidade: z.number().int().min(1).max(1000),
+    variacoes: z.record(codigoSchema, codigoSchema).optional()
+  }).strict()).min(1).max(50),
+  endereco_entrega: enderecoSchema.extend({ nome: z.string().trim().min(2).max(255) }).optional(),
+  forma_pagamento: z.enum(['pix', 'cartao']).optional(),
+  parcelas: z.number().int().min(1).max(12).optional()
+}).strict()
+  .refine(value => new Set(value.itens.map(chaveItem)).size === value.itens.length,
+    'Não repita produtos no pedido')
+  .refine(value => value.parcelas === undefined || value.forma_pagamento === 'cartao',
+    'Parcelamento só no cartão');
 
-function rpcFailure(error: { message: string; code?: string }, res: Response): boolean {
-  // Os códigos de domínio são produzidos pelas funções SQL da migração.
-  const match = /^VC_(INVALID|FORBIDDEN|NOT_FOUND|CONFLICT|STOCK)(?:\b|:)/.exec(error.message);
-  if (!match) return false;
-  const statusMap: Record<string, number> = { INVALID: 400, FORBIDDEN: 403, NOT_FOUND: 404, CONFLICT: 409, STOCK: 409 };
-  const status = statusMap[match[1]];
-  res.status(status).json({ erro: {
-    INVALID: 'Pedido inválido', FORBIDDEN: 'Sem permissão', NOT_FOUND: 'Pedido ou produto não encontrado',
-    CONFLICT: 'Operação incompatível com o estado do pedido', STOCK: 'Estoque insuficiente'
-  }[match[1]] });
-  return true;
-}
+const statusSchema = z.object({ status: z.enum(['aceito', 'enviado', 'concluido', 'cancelado']) }).strict();
+const idempotencySchema = z.uuid().optional();
+const select = 'id, usuario_id, loja_id, status, total, created_at, updated_at, endereco_entrega, forma_pagamento, parcelas, '
+  + 'itens_pedido(id, produto_id, quantidade, preco_unitario, subtotal, variacoes)';
 
 export class PedidoController {
   async create(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { loja_id, itens } = createSchema.parse(req.body);
+      const { loja_id, itens, endereco_entrega, forma_pagamento, parcelas } = createSchema.parse(req.body);
+      const chave = idempotencySchema.parse(req.get('Idempotency-Key') || undefined);
       const client = createSupabaseClient(req.accessToken);
-      const { data: id, error } = await client.rpc('criar_pedido', { p_loja_id: loja_id, p_itens: itens });
+      const { data: id, error } = await client.rpc('criar_pedido', {
+        p_loja_id: loja_id,
+        p_itens: itens,
+        ...(endereco_entrega ? { p_endereco: endereco_entrega } : {}),
+        ...(forma_pagamento ? { p_forma_pagamento: forma_pagamento } : {}),
+        ...(parcelas !== undefined ? { p_parcelas: parcelas } : {}),
+        ...(chave ? { p_chave: chave } : {})
+      });
       if (error) { if (rpcFailure(error, res)) return; throw error; }
       const { data, error: readError } = await client.from('pedidos').select(select).eq('id', id).maybeSingle();
       if (readError || !data) throw readError ?? new Error('Pedido criado, mas não disponível para leitura');

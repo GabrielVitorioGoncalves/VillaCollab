@@ -1,10 +1,18 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { FormField } from "../components/ui/formField";
 import { Input } from "../components/ui/input";
+import { errorMessage } from "../lib/api";
+import { login, register } from "../lib/services";
+import { saveSession } from "../lib/session";
+
+interface AuthLocationState {
+  from?: string;
+  expired?: boolean;
+}
 
 const googleIcon =
   "https://www.figma.com/api/mcp/asset/cb8cd5ed-87ad-4a85-abd7-31963323bf3f.png";
@@ -21,9 +29,22 @@ export function Auth({
   onGoogleLogin,
 }: AuthProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const locationState = (location.state ?? {}) as AuthLocationState;
+  const requestedPath =
+    locationState.from?.startsWith("/user/") || locationState.from?.startsWith("/store/")
+      ? locationState.from
+      : undefined;
+
   const [mode, setMode] = useState<AuthMode>("login");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(
+    locationState.expired
+      ? "Sua sessão expirou. Entre novamente para continuar."
+      : locationState.from
+        ? "Entre na sua conta para continuar."
+        : ""
+  );
   const [loading, setLoading] = useState(false);
 
   const [name, setName] = useState("");
@@ -36,32 +57,27 @@ export function Auth({
     setNotice("");
     setLoading(true);
     try {
-      const path = mode === "login" ? "/auth/login" : "/auth/register";
-      const apiUrl = (import.meta.env.VITE_API_URL || "http://localhost:3333").replace(/\/+$/, "");
-      const response = await fetch(`${apiUrl}/api${path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(mode === "login" ? { email, password } : { nome: name, email, password }),
-      });
-      const result: { erro?: string; access_token?: string; usuario?: { nome: string }; confirmacao_email_pendente?: boolean } =
-        await response.json();
-      if (!response.ok) throw new Error(result.erro || "Não foi possível continuar.");
-
       if (mode === "register") {
+        const result = await register(name.trim(), email.trim(), password);
         setNotice(result.confirmacao_email_pendente
           ? "Conta criada! Confirme seu e-mail antes de entrar."
           : "Conta criada! Agora você pode entrar.");
         setMode("login");
         setPassword("");
       } else {
-        if (!result.access_token || !result.usuario?.nome) throw new Error("Resposta inválida da API.");
-        sessionStorage.setItem("villacollab_token", result.access_token);
-        sessionStorage.setItem("villacollab_user_name", result.usuario.nome);
-        navigate("/user/home", { replace: true });
+        const result = await login(email.trim(), password);
+        if (!result?.access_token || !result.usuario?.nome) throw new Error("Resposta inválida da API.");
+        saveSession({
+          token: result.access_token,
+          expiresAt: result.expires_at,
+          email: email.trim(),
+          usuario: result.usuario,
+        });
+        const home = result.usuario.role === "lojista" ? "/store/dashboard" : "/user/home";
+        navigate(requestedPath ?? home, { replace: true });
       }
     } catch (caught) {
-      setError(caught instanceof TypeError ? "Não foi possível conectar à API." :
-        caught instanceof Error ? caught.message : "Não foi possível continuar.");
+      setError(errorMessage(caught));
     } finally {
       setLoading(false);
     }

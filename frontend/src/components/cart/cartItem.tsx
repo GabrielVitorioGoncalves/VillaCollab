@@ -11,24 +11,30 @@ export interface CartProduct {
   image?: string;
   price: number;
   storeName: string;
+  details?: string;
 }
 
 interface CartItemProps {
   product: CartProduct;
   quantity: number;
+  maxQuantity?: number;
+  warning?: string;
+  onView?: () => void;
   onQuantityChange?: (quantity: number) => void;
   onRemove?: () => void;
-  maxQuantity?: number;
 }
 
 export function CartItem({
   product,
   quantity,
+  maxQuantity,
+  warning,
+  onView,
   onQuantityChange,
   onRemove,
-  maxQuantity,
 }: CartItemProps) {
   const subtotal = product.price * quantity;
+  const atMax = maxQuantity !== undefined && quantity >= maxQuantity;
 
   const decreaseQuantity = () => {
     if (quantity > 1) {
@@ -37,12 +43,14 @@ export function CartItem({
   };
 
   const increaseQuantity = () => {
-    if (maxQuantity === undefined || quantity < maxQuantity) onQuantityChange?.(quantity + 1);
+    if (!atMax) {
+      onQuantityChange?.(quantity + 1);
+    }
   };
 
   return (
-    <Card className="min-w-0 p-4">
-      <div className="flex flex-col gap-4 sm:flex-row">
+    <Card className="p-4">
+      <div className="flex gap-4">
         {/* Imagem */}
         <div className="w-24 shrink-0">
           <ProductImage
@@ -55,26 +63,48 @@ export function CartItem({
         <div className="flex min-w-0 flex-1 flex-col justify-between gap-4">
           <div>
             <h3 className="font-medium text-text">
-              {product.name}
+              {onView ? (
+                <button
+                  type="button"
+                  onClick={onView}
+                  className="text-left transition-opacity hover:opacity-60"
+                >
+                  {product.name}
+                </button>
+              ) : (
+                product.name
+              )}
             </h3>
 
             <p className="mt-1 text-sm text-text-secondary">
               {product.storeName}
             </p>
 
+            {product.details && (
+              <p className="mt-1 text-sm text-text">
+                {product.details}
+              </p>
+            )}
+
             <div className="mt-2">
               <Price value={product.price} />
             </div>
+
+            {warning && (
+              <p className="mt-2 text-sm text-danger">
+                {warning}
+              </p>
+            )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             {/* Quantidade */}
             <div className="flex items-center rounded-lg border border-border">
               <button
                 type="button"
                 onClick={decreaseQuantity}
-                aria-label={`Diminuir quantidade de ${product.name}`}
                 disabled={quantity <= 1}
+                aria-label="Diminuir quantidade"
                 className="
                   flex h-9 w-9 items-center justify-center
                   text-text
@@ -94,13 +124,14 @@ export function CartItem({
               <button
                 type="button"
                 onClick={increaseQuantity}
-                aria-label={`Aumentar quantidade de ${product.name}`}
-                disabled={maxQuantity !== undefined && quantity >= maxQuantity}
+                disabled={atMax}
+                aria-label="Aumentar quantidade"
                 className="
                   flex h-9 w-9 items-center justify-center
                   text-text
                   transition-colors
                   hover:bg-background-secondary
+                  disabled:cursor-not-allowed
                   disabled:opacity-40
                 "
               >

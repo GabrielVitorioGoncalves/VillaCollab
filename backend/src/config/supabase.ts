@@ -18,3 +18,16 @@ export function createSupabaseClient(accessToken?: string) {
 }
 
 export const supabase = createSupabaseClient();
+
+export async function updateAuthUser(accessToken: string, attributes: { email?: string; password?: string }) {
+  const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/auth/v1/user`, {
+    method: 'PUT',
+    headers: {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(attributes)
+  });
+  return { ok: response.ok, status: response.status };
+}

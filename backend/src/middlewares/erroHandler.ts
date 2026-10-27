@@ -19,6 +19,10 @@ export function errorHandler(
     res.status(409).json({ erro: err.message });
     return;
   }
+  if (err && err.type === 'entity.too.large') {
+    res.status(413).json({ erro: 'Arquivo ou corpo da requisição grande demais' });
+    return;
+  }
   if (err instanceof SyntaxError && err && 'type' in err && err.type === 'entity.parse.failed') {
     res.status(400).json({ erro: 'JSON inválido' });
     return;
