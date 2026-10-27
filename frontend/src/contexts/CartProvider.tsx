@@ -20,16 +20,8 @@ import {
   type CartNotice,
 } from "./cartContext";
 
-/*
- * Cada conta tem o próprio carrinho, guardado no backend (/api/carrinho).
- * O navegador guarda uma cópia por usuário só para abrir rápido.
- * Visitante (sem login) tem um carrinho local; ao entrar, ele é somado ao da conta.
- */
-
-// Chave antiga, compartilhada por todo mundo no navegador. Não é mais usada.
 const LEGACY_KEY = "villacollab_cart";
 const GUEST = "visitante";
-// Limite do backend: até 1000 unidades por item.
 const MAX_QUANTITY = 1000;
 const SAVE_DELAY = 400;
 
@@ -38,7 +30,6 @@ type Owner = string | null;
 interface CartState {
   owner: Owner;
   lines: CartLine[];
-  // true = mudou aqui e ainda não foi para o servidor.
   dirty: boolean;
 }
 
@@ -68,8 +59,6 @@ interface LocalCart {
   dirty: boolean;
 }
 
-// A cópia local guarda também se há mudança que ainda não chegou ao servidor
-// (ex.: a página recarregou antes do envio). Nesse caso ela ganha do servidor.
 function loadLocal(owner: Owner): LocalCart {
   try {
     localStorage.removeItem(LEGACY_KEY);
@@ -90,7 +79,7 @@ function saveLocal(owner: Owner, lines: CartLine[], dirty: boolean) {
     if (lines.length === 0 && !dirty) localStorage.removeItem(storageKey(owner));
     else localStorage.setItem(storageKey(owner), JSON.stringify({ lines, dirty }));
   } catch {
-    // Sem storage o carrinho continua funcionando enquanto a aba estiver aberta.
+    // sem storage, o carrinho fica só em memória
   }
 }
 
@@ -108,7 +97,7 @@ function fromServer(items: CarrinhoItem[]): CartLine[] {
         storeName: product.lojas?.nome ?? "",
         name: product.nome,
         price: toNumber(product.preco),
-        stock: product.estoque,
+        stock: product.ativo === false ? 0 : product.estoque,
         quantity: item.quantidade,
         image: product.imagens?.[0],
         variants,
@@ -126,7 +115,6 @@ function toServer(lines: CartLine[]) {
   }));
 }
 
-// "sum": junta carrinho de visitante ao da conta. "prefer": mudanças locais ganham.
 function mergeLines(base: CartLine[], extra: CartLine[], mode: "sum" | "prefer"): CartLine[] {
   const result = base.map((line) => ({ ...line }));
   for (const line of extra) {
@@ -149,10 +137,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<CartNotice | null>(null);
   const { owner, lines, dirty } = state;
 
-  // Envio pendente para o servidor (para o flush do logout).
   const pending = useRef<{ owner: string; lines: CartLine[] } | null>(null);
 
-  // Login, logout ou troca de conta: troca o carrinho exibido.
   useEffect(() => {
     const onSessionChange = () => {
       const next = getUserId();
@@ -164,7 +150,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(SESSION_CHANGED_EVENT, onSessionChange);
   }, []);
 
-  // Com login: busca o carrinho da conta e soma o que o visitante tinha separado.
   useEffect(() => {
     if (!owner) return;
     let active = true;
@@ -191,7 +176,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
         });
       },
       () => {
-        // Sem servidor (ou migração ainda não aplicada): segue com a cópia local.
       }
     );
 
@@ -200,12 +184,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
     };
   }, [owner]);
 
-  // Cópia local por dono.
   useEffect(() => {
     saveLocal(owner, lines, dirty);
   }, [owner, lines, dirty]);
 
-  // Mudanças de quem está logado vão para o servidor, agrupadas.
   useEffect(() => {
     if (!owner || !dirty) {
       pending.current = null;
@@ -217,7 +199,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
       saveCart(toServer(lines)).then(
         () => setState((current) => (current.lines === lines ? { ...current, dirty: false } : current)),
         () => {
-          // Fica marcado como pendente; a próxima mudança tenta de novo.
         }
       );
     }, SAVE_DELAY);
@@ -231,7 +212,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     try {
       await saveCart(toServer(job.lines));
     } catch {
-      // Logout segue mesmo se o envio falhar; a cópia local continua guardada.
+      // a cópia local continua salva
     }
   }, []);
 
@@ -313,7 +294,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     [update]
   );
 
-  // Atualiza só a exibição (preço/estoque atuais); não precisa reenviar ao servidor.
   const syncProducts = useCallback((products: Record<string, Produto | null>) => {
     setState((current) => ({
       ...current,
@@ -326,7 +306,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           ...line,
           name: product.nome,
           price: toNumber(product.preco),
-          stock: product.estoque,
+          stock: product.ativo === false ? 0 : product.estoque,
           image: product.imagens?.[0] ?? line.image,
           variantLabel: label || line.variantLabel,
         };

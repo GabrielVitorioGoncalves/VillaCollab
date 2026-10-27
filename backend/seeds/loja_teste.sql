@@ -1,6 +1,3 @@
--- Loja de demonstração com os campos novos (categoria, filtros, variações, promoção...).
--- Rodar depois de migrations/rls.sql e migrations/catalogo_perfil_pedidos.sql.
--- Pode ser executado mais de uma vez.
 begin;
 
 do $$

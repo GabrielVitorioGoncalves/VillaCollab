@@ -1,15 +1,6 @@
--- Campos que o frontend já exibe e que o banco ainda não tinha.
--- Rodar no SQL Editor do Supabase DEPOIS de migrations/rls.sql.
---
--- Formatos JSON usados:
---   lojas.filtros      [{"id":"tamanho","nome":"Tamanho","tipo":"checkbox","opcoes":[{"id":"m","nome":"M"}]}]
---   produtos.filtros   {"tamanho":["m","g"],"cor":["preto"]}
---   produtos.atributos [{"nome":"Marca","valor":"Logitech"}]
---   produtos.variacoes [{"id":"cor","nome":"Cor","opcoes":[{"id":"preto","nome":"Preto"}]}]
---   endereços          {"nome","cep","rua","numero","complemento","bairro","cidade","estado"}
+-- Rodar depois de migrations/rls.sql.
 begin;
 
-/* ---------- Lojas ---------- */
 alter table public.lojas
   add column if not exists categoria varchar(100),
   add column if not exists logo_url text,
@@ -19,7 +10,6 @@ alter table public.lojas
   add column if not exists total_avaliacoes integer not null default 0;
 alter table public.lojas add constraint lojas_filtros_lista check (jsonb_typeof(filtros) = 'array');
 
-/* ---------- Produtos ---------- */
 alter table public.produtos
   add column if not exists categoria varchar(100),
   add column if not exists preco_antigo numeric(10, 2),
@@ -35,19 +25,14 @@ alter table public.produtos add constraint produtos_atributos_lista check (jsonb
 alter table public.produtos add constraint produtos_variacoes_lista check (jsonb_typeof(variacoes) = 'array');
 alter table public.produtos add constraint produtos_filtros_objeto check (jsonb_typeof(filtros) = 'object');
 
-/* ---------- Perfil ---------- */
 alter table public.usuarios
   add column if not exists telefone varchar(20),
   add column if not exists endereco jsonb;
 alter table public.usuarios add constraint usuarios_endereco_objeto
   check (endereco is null or jsonb_typeof(endereco) = 'object');
 
--- A policy antiga do schema.sql deixava o próprio usuário alterar qualquer coluna,
--- inclusive role (cliente virava admin com um UPDATE direto). A edição de perfil
--- agora passa por atualizar_meu_perfil, que só mexe em nome, telefone e endereço.
 drop policy if exists "Usuário pode editar seu próprio perfil" on public.usuarios;
 
-/* ---------- Pedidos ---------- */
 alter table public.pedidos
   add column if not exists endereco_entrega jsonb,
   add column if not exists forma_pagamento varchar(20),
@@ -64,7 +49,6 @@ alter table public.itens_pedido
 alter table public.itens_pedido add constraint itens_pedido_variacoes_objeto
   check (jsonb_typeof(variacoes) = 'object');
 
-/* ---------- Avaliações ---------- */
 create table if not exists public.avaliacoes (
   id uuid primary key default gen_random_uuid(),
   produto_id uuid not null references public.produtos(id) on delete cascade,
@@ -77,11 +61,7 @@ create table if not exists public.avaliacoes (
 );
 alter table public.avaliacoes enable row level security;
 create policy avaliacoes_leitura on public.avaliacoes for select to anon, authenticated using (true);
--- Escrita só pela função avaliar_produto.
 
-/* ---------- Funções ---------- */
-
--- Cliente edita só nome, telefone e endereço; role e loja_id continuam protegidos.
 create or replace function public.atualizar_meu_perfil(p_nome text, p_telefone text, p_endereco jsonb)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
@@ -96,7 +76,6 @@ begin
 end;
 $$;
 
--- Substitui a versão de rls.sql: aceita variações por item, endereço e forma de pagamento.
 drop function if exists public.criar_pedido(uuid, jsonb);
 create or replace function public.criar_pedido(
   p_loja_id uuid,
@@ -130,7 +109,6 @@ begin
        or (e.value ? 'variacoes' and jsonb_typeof(e.value -> 'variacoes') <> 'object')) then
     raise exception 'VC_INVALID';
   end if;
-  -- O mesmo produto pode vir mais de uma vez só com variações diferentes.
   if (select count(*) from jsonb_array_elements(p_itens)) <>
     (select count(distinct (e.value ->> 'produto_id') || '|' ||
         coalesce(e.value -> 'variacoes', '{}'::jsonb)::text)
@@ -163,7 +141,6 @@ begin
       where id = v_item.produto_id::uuid for update;
     if not found or v_produto.loja_id <> p_loja_id then raise exception 'VC_NOT_FOUND'; end if;
 
-    -- Cada variação escolhida precisa existir no produto...
     if exists (select 1 from jsonb_each(v_item.variacoes) s
       where jsonb_typeof(s.value) <> 'string'
          or not exists (select 1
@@ -172,13 +149,11 @@ begin
            where v ->> 'id' = s.key and o ->> 'id' = s.value #>> '{}')) then
       raise exception 'VC_INVALID';
     end if;
-    -- ...e todas as variações do produto precisam ser escolhidas.
     if exists (select 1 from jsonb_array_elements(v_produto.variacoes) v
       where not (v_item.variacoes ? (v ->> 'id'))) then
       raise exception 'VC_INVALID';
     end if;
 
-    -- O estoque é do produto: linhas com variações diferentes somam no mesmo saldo.
     if v_produto.estoque < v_item.quantidade then raise exception 'VC_STOCK'; end if;
     if v_total + v_produto.preco * v_item.quantidade > 99999999.99 then
       raise exception 'VC_INVALID';
@@ -194,7 +169,6 @@ begin
 end;
 $$;
 
--- Só quem recebeu o produto (pedido concluído) avalia. Uma avaliação por cliente, editável.
 create or replace function public.avaliar_produto(p_produto_id uuid, p_nota integer, p_comentario text default null)
 returns void language plpgsql security definer set search_path = '' as $$
 declare
@@ -217,7 +191,6 @@ begin
     on conflict (produto_id, usuario_id)
     do update set nota = excluded.nota, comentario = excluded.comentario, updated_at = now();
 
-  -- Médias guardadas na própria linha: as telas leem sem consulta extra.
   update public.produtos set
     nota_media = (select round(avg(nota), 2) from public.avaliacoes where produto_id = p_produto_id),
     total_avaliacoes = (select count(*) from public.avaliacoes where produto_id = p_produto_id)

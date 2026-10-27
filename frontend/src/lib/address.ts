@@ -28,7 +28,6 @@ export function formatCep(value: string): string {
   return digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
 }
 
-// Mesmas regras do backend (enderecoSchema), para avisar antes de enviar.
 export function validateAddress(form: AddressForm, requireName: boolean): AddressErrors {
   const errors: AddressErrors = {};
   if (requireName && form.nome.trim().length < 2) errors.nome = "Informe o nome de quem recebe.";

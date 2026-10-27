@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Button } from "../../components/ui/button";
@@ -18,11 +18,20 @@ import {
 } from "../../lib/address";
 import { errorMessage } from "../../lib/api";
 import { cartSubtotal, groupByStore, lineProblem } from "../../lib/cart";
-import { createOrder, getMe } from "../../lib/services";
+import { formatCurrency, toNumber } from "../../lib/format";
+import { createOrder, getMe, listStores } from "../../lib/services";
 
 type PaymentMethod = "pix" | "credit-card";
 
-// Limite do backend (PedidoController): até 50 itens por pedido.
+function newUuid(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 const MAX_LINES_PER_ORDER = 50;
 
 export function PaymentPage() {
@@ -33,7 +42,6 @@ export function PaymentPage() {
     useState<PaymentMethod>("pix");
   const [installments, setInstallments] = useState(1);
 
-  // Endereço: começa com o do perfil; vira estado local quando a pessoa edita.
   const profile = useRequest("perfil-checkout", getMe);
   const [editedAddress, setEditedAddress] = useState<AddressForm | null>(null);
   const address = editedAddress ?? toAddressForm(profile.data?.endereco, profile.data?.nome);
@@ -50,6 +58,29 @@ export function PaymentPage() {
 
   const hasProblems = lines.some((line) => lineProblem(line, lines) !== undefined);
   const tooManyLines = groups.find((group) => group.lines.length > MAX_LINES_PER_ORDER);
+
+  const stores = useRequest("lojas-checkout", listStores);
+  const storeIssues = groups.flatMap((group) => {
+    const loja = stores.data?.find((item) => item.id === group.storeId);
+    if (!loja) return [];
+    if (loja.aceita_pedidos === false) {
+      return [`A ${group.storeName} não está recebendo pedidos no momento. Remova os produtos dela para continuar.`];
+    }
+    const minimo = toNumber(loja.pedido_minimo);
+    if (minimo > 0 && group.subtotal < minimo) {
+      return [`O pedido mínimo da ${group.storeName} é ${formatCurrency(minimo)}. Faltam ${formatCurrency(minimo - group.subtotal)}.`];
+    }
+    return [];
+  });
+
+  const idempotencyKeys = useRef(new Map<string, { signature: string; key: string }>());
+  const keyFor = (storeId: string, signature: string) => {
+    const saved = idempotencyKeys.current.get(storeId);
+    if (saved && saved.signature === signature) return saved.key;
+    const key = newUuid();
+    idempotencyKeys.current.set(storeId, { signature, key });
+    return key;
+  };
 
   const updateAddress = (field: keyof AddressForm, value: string) => {
     setEditedAddress({ ...address, [field]: field === "cep" ? formatCep(value) : value });
@@ -73,25 +104,27 @@ export function PaymentPage() {
     const endereco = { ...toEndereco(address, true), nome: address.nome.trim() };
     const createdIds: string[] = [];
 
-    // Um pedido por loja. Cada pedido criado sai do carrinho na hora,
-    // assim uma falha no meio não duplica o que já foi feito.
     for (const group of groups) {
       try {
+        const itens = group.lines.map((line) => ({
+          produto_id: line.productId,
+          quantidade: line.quantity,
+          ...(line.variants && Object.keys(line.variants).length > 0
+            ? { variacoes: line.variants }
+            : {}),
+        }));
+        const options = {
+          endereco_entrega: endereco,
+          forma_pagamento: paymentMethod === "pix" ? ("pix" as const) : ("cartao" as const),
+          ...(paymentMethod === "credit-card" ? { parcelas: installments } : {}),
+        };
         const pedido = await createOrder(
           group.storeId,
-          group.lines.map((line) => ({
-            produto_id: line.productId,
-            quantidade: line.quantity,
-            ...(line.variants && Object.keys(line.variants).length > 0
-              ? { variacoes: line.variants }
-              : {}),
-          })),
-          {
-            endereco_entrega: endereco,
-            forma_pagamento: paymentMethod === "pix" ? "pix" : "cartao",
-            ...(paymentMethod === "credit-card" ? { parcelas: installments } : {}),
-          }
+          itens,
+          options,
+          keyFor(group.storeId, JSON.stringify([itens, options]))
         );
+        idempotencyKeys.current.delete(group.storeId);
         createdIds.push(pedido.id);
         removeItems(group.lines.map((line) => line.key));
       } catch (caught) {
@@ -466,7 +499,6 @@ export function PaymentPage() {
                   </p>
                 </div>
 
-                {/* Ainda não há gateway: nada destes campos sai do navegador. */}
                 <p className="mt-4 rounded-lg border border-border bg-background-secondary px-4 py-3 text-xs text-text-secondary">
                   A cobrança no cartão ainda não está ativa. Registramos só a forma de
                   pagamento e as parcelas; os dados do cartão não são enviados nem guardados.
@@ -653,7 +685,13 @@ export function PaymentPage() {
                   </p>
                 )}
 
-                {hasProblems || tooManyLines ? (
+                {storeIssues.map((issue) => (
+                  <p key={issue} className="text-sm text-danger">
+                    {issue}
+                  </p>
+                ))}
+
+                {hasProblems || tooManyLines || storeIssues.length > 0 ? (
                   <Button
                     className="mt-2 w-full"
                     variant="outline"
@@ -665,7 +703,7 @@ export function PaymentPage() {
                   <Button
                     className="mt-2 w-full"
                     onClick={handlePayment}
-                    disabled={submitting}
+                    disabled={submitting || profile.loading}
                   >
                     {submitting
                       ? "Enviando..."

@@ -8,10 +8,6 @@ interface RequestState<T> {
   error?: string;
 }
 
-/**
- * Carrega dados quando `key` muda. Passe `null` para não carregar nada.
- * O estado de carregamento é derivado da chave, sem setState síncrono no efeito.
- */
 export function useRequest<T>(key: string | null, fetcher: () => Promise<T>) {
   const [nonce, setNonce] = useState(0);
   const [state, setState] = useState<RequestState<T>>({ key: null });

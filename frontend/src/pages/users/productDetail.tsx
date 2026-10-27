@@ -77,7 +77,7 @@ export function ProductDetail() {
     price: toNumber(produto.preco),
     oldPrice: promotionOf(produto).oldPrice,
     storeName: loja.nome,
-    available: produto.estoque > 0,
+    available: produto.estoque > 0 && produto.ativo !== false && loja.aceita_pedidos !== false,
     description: produto.descricao ?? undefined,
     rating: ratingOf(produto)?.rating,
     reviewCount: ratingOf(produto)?.reviewCount,
@@ -86,7 +86,6 @@ export function ProductDetail() {
     stock: produto.estoque,
   };
 
-  // Estoque é do produto: unidades de outras variações no carrinho contam.
   const inCart = quantityInCart(lines, produto.id);
   const remaining = Math.max(0, product.stock - inCart);
   const selectedQuantity = Math.min(quantity, Math.max(remaining, 1));
@@ -226,7 +225,19 @@ export function ProductDetail() {
                 />
               )}
 
-              {product.available && remaining > 0 && product.stock <= 10 && (
+              {produto.ativo === false && (
+                <p className="text-center text-xs text-text-secondary">
+                  Este produto não está mais à venda.
+                </p>
+              )}
+
+              {produto.ativo !== false && loja.aceita_pedidos === false && (
+                <p className="text-center text-xs text-text-secondary">
+                  A loja não está recebendo pedidos no momento.
+                </p>
+              )}
+
+              {loja.exibir_estoque !== false && product.available && remaining > 0 && product.stock <= 10 && (
                 <p className="text-center text-xs text-text-secondary">
                   {product.stock}{" "}
                   {product.stock === 1

@@ -11,7 +11,6 @@ export function CartPage() {
   const navigate = useNavigate();
   const { lines, setQuantity, removeItem, syncProducts } = useCart();
 
-  // Ao abrir o carrinho, confere preço e estoque atuais na API.
   const sync = useRequest(lines.length > 0 ? "carrinho" : null, async () => {
     const products = await fetchCartProducts([...new Set(lines.map((line) => line.productId))]);
     syncProducts(products);

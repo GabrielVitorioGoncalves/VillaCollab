@@ -1,6 +1,4 @@
--- Carrinho por usuário. Rodar depois de migrations/catalogo_perfil_pedidos.sql.
--- Visitante (sem login) continua com o carrinho só no navegador; ao entrar,
--- o frontend junta esses itens ao carrinho da conta.
+-- Rodar depois de migrations/catalogo_perfil_pedidos.sql.
 begin;
 
 create table if not exists public.carrinho_itens (
@@ -14,12 +12,9 @@ create table if not exists public.carrinho_itens (
 );
 
 alter table public.carrinho_itens enable row level security;
--- Cada um enxerga só o próprio carrinho. A escrita passa por substituir_carrinho.
 create policy carrinho_leitura on public.carrinho_itens for select to authenticated
   using (usuario_id = (select auth.uid()));
 
--- Troca o carrinho inteiro do usuário logado numa transação só.
--- Produtos que não existem mais são ignorados (não derrubam o carrinho todo).
 create or replace function public.substituir_carrinho(p_itens jsonb)
 returns void language plpgsql security definer set search_path = '' as $$
 declare

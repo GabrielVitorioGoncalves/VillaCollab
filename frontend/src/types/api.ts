@@ -1,7 +1,3 @@
-// Formatos devolvidos pelo backend (backend/src/controllers).
-// Campos marcados como opcionais (?) vêm da migração catalogo_perfil_pedidos.sql:
-// o front funciona mesmo se ela ainda não tiver sido aplicada.
-
 export type UserRole = "cliente" | "lojista" | "admin";
 
 export interface Opcao {
@@ -61,6 +57,23 @@ export interface Loja {
   nota_media?: number | string | null;
   total_avaliacoes?: number;
   total_produtos?: number;
+  email_contato?: string | null;
+  telefone?: string | null;
+  aceita_pedidos?: boolean;
+  exibir_estoque?: boolean;
+  prazo_preparo_dias?: number | null;
+  pedido_minimo?: number | string;
+}
+
+export interface NotificacoesLoja {
+  email: boolean;
+  pedidos: boolean;
+  estoque_baixo: boolean;
+}
+
+export interface MinhaLoja extends Loja {
+  confirmar_automaticamente?: boolean;
+  notificacoes?: NotificacoesLoja;
 }
 
 export interface Produto {
@@ -68,7 +81,6 @@ export interface Produto {
   loja_id: string;
   nome: string;
   descricao: string | null;
-  // DECIMAL do Postgres: tratar com Number() por segurança.
   preco: number | string;
   estoque: number;
   created_at: string;
@@ -80,9 +92,10 @@ export interface Produto {
   filtros?: Record<string, string[]>;
   nota_media?: number | string | null;
   total_avaliacoes?: number;
+  ativo?: boolean;
 }
 
-export type PedidoStatus = "pendente" | "aceito" | "concluido" | "cancelado";
+export type PedidoStatus = "pendente" | "aceito" | "enviado" | "concluido" | "cancelado";
 export type FormaPagamento = "pix" | "cartao";
 
 export interface ItemPedido {
@@ -120,14 +133,28 @@ export interface RegisterResponse {
   confirmacao_email_pendente: boolean;
 }
 
-// GET/PUT /api/carrinho: item com os dados do produto e o nome da loja.
 export interface CarrinhoItem {
   produto_id: string;
   quantidade: number;
   variacoes: Record<string, string>;
   produtos:
-    | (Pick<Produto, "id" | "loja_id" | "nome" | "preco" | "estoque" | "imagens" | "variacoes"> & {
+    | (Pick<Produto, "id" | "loja_id" | "nome" | "preco" | "estoque" | "imagens" | "variacoes" | "ativo"> & {
         lojas: { nome: string } | null;
       })
     | null;
+}
+
+export interface ClientePedido {
+  nome: string | null;
+  telefone: string | null;
+  email: string | null;
+}
+
+export interface ItemPedidoLoja extends ItemPedido {
+  produtos: Pick<Produto, "nome" | "imagens" | "variacoes"> | null;
+}
+
+export interface PedidoLoja extends Omit<Pedido, "itens_pedido"> {
+  itens_pedido: ItemPedidoLoja[];
+  cliente: ClientePedido | null;
 }

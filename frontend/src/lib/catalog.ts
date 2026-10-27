@@ -1,4 +1,3 @@
-// Converte os dados da API para os formatos que os componentes já usavam.
 import type { Store } from "../components/marketplace/storeCard";
 import type { StoreFilter } from "../components/marketplace/storeFilterSideBar";
 import type { ProductVariant } from "../components/marketplace/productVariants";
@@ -18,7 +17,6 @@ export function toStoreCard(loja: Loja): Store {
   };
 }
 
-// Nota só aparece quando existe pelo menos uma avaliação.
 export function ratingOf(item: { nota_media?: number | string | null; total_avaliacoes?: number }) {
   if (!item.total_avaliacoes || item.nota_media === null || item.nota_media === undefined) {
     return undefined;
@@ -26,7 +24,6 @@ export function ratingOf(item: { nota_media?: number | string | null; total_aval
   return { rating: toNumber(item.nota_media), reviewCount: item.total_avaliacoes };
 }
 
-// Promoção: preço "de" maior que o preço atual.
 export function promotionOf(produto: Produto) {
   const price = toNumber(produto.preco);
   const oldPrice = toNumber(produto.preco_antigo);
@@ -59,7 +56,6 @@ export function toProductAttributes(produto: Produto): ProductAttribute[] {
   }));
 }
 
-// "Tamanho: M · Cor: Preto", na ordem em que a loja cadastrou as variações.
 export function variantLabel(variacoes: Variacao[] = [], selected: Record<string, string> = {}): string {
   return variacoes
     .filter((variacao) => selected[variacao.id])

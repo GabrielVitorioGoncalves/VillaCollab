@@ -72,7 +72,6 @@ export class AuthController {
     } catch (error) { next(error); }
   }
 
-  // Nome, telefone e endereço. role e loja_id não passam por aqui.
   async updateMe(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const input = profileSchema.parse(req.body);
@@ -98,7 +97,6 @@ export class AuthController {
     } catch (error) { next(error); }
   }
 
-  // O Supabase envia um link de confirmação; o e-mail só muda depois de confirmado.
   async changeEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { email } = emailSchema.parse(req.body);

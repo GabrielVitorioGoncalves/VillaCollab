@@ -10,7 +10,6 @@ const body = z.object({
 }).strict();
 
 export class AvaliacaoController {
-  // Só quem tem pedido concluído com o produto avalia; reenviar atualiza a nota.
   async create(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = params.parse(req.params);

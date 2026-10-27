@@ -23,15 +23,14 @@ const precoSchema = z.number().positive('O preço deve ser maior que zero')
 const nomeSchema = z.string().trim().min(3, 'O nome deve ter no mínimo 3 caracteres')
   .max(255, 'O nome deve ter no máximo 255 caracteres');
 
-// Campos de vitrine: todos opcionais para não quebrar quem já cadastra só nome e preço.
 const vitrineSchema = {
   categoria: z.string().trim().min(1).max(100).optional(),
-  // Preço "de" para promoção. null remove a promoção.
   preco_antigo: precoSchema.nullable().optional(),
   imagens: z.array(urlImagemSchema).max(10).optional(),
   atributos: atributosSchema.optional(),
   variacoes: variacoesSchema.optional(),
-  filtros: filtrosProdutoSchema.optional()
+  filtros: filtrosProdutoSchema.optional(),
+  ativo: z.boolean().optional()
 };
 
 export const produtoSchema = z.object({

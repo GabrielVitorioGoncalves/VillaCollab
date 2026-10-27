@@ -27,7 +27,7 @@ import { RequestStatus } from "../../components/ui/requestStatus";
 import { useCart } from "../../contexts/cartContext";
 import { useRequest } from "../../hooks/useRequest";
 import { promotionOf, ratingOf, toStoreFilters } from "../../lib/catalog";
-import { isUuid, toNumber } from "../../lib/format";
+import { formatCurrency, isUuid, toNumber } from "../../lib/format";
 import { getStore, listStoreProducts } from "../../lib/services";
 
 interface Store {
@@ -42,16 +42,6 @@ interface Store {
 interface StoreProduct extends Product {
   createdAt?: string;
 
-  /*
-   * Filtros personalizados da loja (produtos.filtros no banco).
-   *
-   * Exemplo:
-   *
-   * {
-   *   tamanho: ["m", "g"],
-   *   cor: ["preto"]
-   * }
-   */
   filterValues?: Record<string, string[]>;
 }
 
@@ -121,22 +111,8 @@ export function StorePage() {
   const [sort, setSort] = useState("relevance");
   const [currentPage, setCurrentPage] = useState(1);
 
-  /*
-   * Filtros personalizados selecionados.
-   *
-   * Exemplo:
-   *
-   * {
-   *   tamanho: ["m", "g"],
-   *   cor: ["preto"]
-   * }
-   */
   const [selectedFilters, setSelectedFilters] =
     useState<Record<string, string[]>>({});
-
-  /* =======================================================
-     DADOS DA API
-     ======================================================= */
 
   const store: Store | null = data
     ? {
@@ -164,7 +140,7 @@ export function StorePage() {
         ...promotionOf(produto),
         storeName: data?.loja.nome ?? "",
         category: produto.categoria ?? undefined,
-        available: produto.estoque > 0,
+        available: produto.estoque > 0 && data?.loja.aceita_pedidos !== false,
         createdAt: produto.created_at,
         filterValues: produto.filtros ?? {},
       })),
@@ -238,7 +214,6 @@ export function StorePage() {
        ------------------------------------------------------- */
 
     if (sort === "relevance") {
-      // Disponíveis primeiro, depois por nome.
       result.sort(
         (a, b) =>
           Number(b.available) - Number(a.available) ||
@@ -376,11 +351,12 @@ export function StorePage() {
     const produto = data?.produtos.find((item) => item.id === product.id);
     if (!produto || !data) return;
 
-    // Produto com tamanho/cor precisa da escolha, feita na página do produto.
     if ((produto.variacoes ?? []).length > 0) {
       handleViewProduct(product);
       return;
     }
+
+    if (data.loja.aceita_pedidos === false) return;
 
     addItem(produto, data.loja.nome, 1);
   }
@@ -467,6 +443,32 @@ return (
                 {store.description}
               </p>
             )}
+
+            {data && (data.loja.prazo_preparo_dias != null || toNumber(data.loja.pedido_minimo) > 0) && (
+              <p className="mt-2 text-xs text-text-secondary">
+                {[
+                  data.loja.prazo_preparo_dias != null
+                    ? data.loja.prazo_preparo_dias === 0
+                      ? "Pedidos preparados no mesmo dia"
+                      : `Prazo de preparo: até ${data.loja.prazo_preparo_dias} ${data.loja.prazo_preparo_dias === 1 ? "dia" : "dias"}`
+                    : "",
+                  toNumber(data.loja.pedido_minimo) > 0
+                    ? `Pedido mínimo: ${formatCurrency(data.loja.pedido_minimo)}`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            )}
+
+            {data?.loja.aceita_pedidos === false && (
+              <p
+                role="status"
+                className="mt-3 inline-block rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-800"
+              >
+                Esta loja não está recebendo pedidos no momento.
+              </p>
+            )}
           </div>
       </section>
 
@@ -537,7 +539,6 @@ return (
             "
           >
 
-            {/* Filtros (cadastrados pela loja em lojas.filtros) */}
             {storeFilters.length > 0 && (
               <StoreFilterSidebar
                 filters={storeFilters}

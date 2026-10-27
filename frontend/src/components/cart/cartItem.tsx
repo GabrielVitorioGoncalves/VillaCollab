@@ -11,7 +11,6 @@ export interface CartProduct {
   image?: string;
   price: number;
   storeName: string;
-  // Variações escolhidas, ex.: "Tamanho: M · Cor: Preto".
   details?: string;
 }
 

@@ -10,7 +10,6 @@ export interface StoreGroup {
   subtotal: number;
 }
 
-// O backend cria um pedido por loja, então o checkout trabalha com grupos.
 export function groupByStore(lines: CartLine[]): StoreGroup[] {
   const groups = new Map<string, StoreGroup>();
 
@@ -33,7 +32,6 @@ export function cartSubtotal(lines: CartLine[]): number {
   return lines.reduce((total, line) => total + line.price * line.quantity, 0);
 }
 
-// O estoque é do produto: variações diferentes do mesmo produto dividem o mesmo saldo.
 export function lineProblem(line: CartLine, lines: CartLine[]): string | undefined {
   if (line.stock <= 0) return "Este produto não está mais disponível. Remova para continuar.";
   const total = lines
@@ -48,7 +46,6 @@ export function lineProblem(line: CartLine, lines: CartLine[]): string | undefin
   return undefined;
 }
 
-// Busca preço e estoque atuais. Produto removido da loja volta como null.
 export async function fetchCartProducts(productIds: string[]) {
   const entries = await Promise.all(
     productIds.map(async (id): Promise<[string, Produto | null]> => {

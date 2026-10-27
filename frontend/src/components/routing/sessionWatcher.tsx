@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { SESSION_EXPIRED_EVENT } from "../../lib/session";
 
-// Quando a API responde 401, volta para o login lembrando de onde o usuário veio.
 export function SessionWatcher() {
   const navigate = useNavigate();
   const location = useLocation();

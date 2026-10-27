@@ -3,6 +3,7 @@ import {
   LogIn,
   LogOut,
   ShoppingCart,
+  Store,
   User,
 } from "lucide-react";
 
@@ -11,12 +12,13 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { SearchBar } from "../search/searchBar";
 import { useCart } from "../../contexts/cartContext";
-import { clearSession, getUserName } from "../../lib/session";
+import { clearSession, getSession, getUserName } from "../../lib/session";
 
 const SCROLL_THRESHOLD = 20;
 
 export function Header() {
   const userName = getUserName();
+  const isSeller = getSession()?.usuario?.role === "lojista";
   const { count: cartCount, flush: flushCart } = useCart();
   const [searchParams] = useSearchParams();
   const [visible, setVisible] = useState(true);
@@ -99,14 +101,11 @@ export function Header() {
 
   const handleSearchChange = (value: string) => {
     setSearchValue(value);
-    // Ao limpar o campo, volta a mostrar todas as lojas.
     if (!value && searchParams.get("busca")) navigate("/user/home");
   };
 
   const handleLogout = async () => {
     setUserMenuOpen(false);
-    // Garante que a última mudança do carrinho chegou ao servidor antes de sair.
-    // Ao sair, o carrinho exibido passa a ser o de visitante (cada conta tem o seu).
     await flushCart();
     clearSession();
     navigate("/");
@@ -312,6 +311,33 @@ export function Header() {
                   </button>
                   ) : (
                   <>
+                  {isSeller && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      navigate("/store/dashboard");
+                    }}
+                    className="
+                      flex
+                      w-full
+                      items-center
+                      gap-3
+                      rounded-lg
+                      px-3
+                      py-2.5
+                      text-sm
+                      text-text
+                      transition-colors
+                      hover:bg-background-secondary
+                    "
+                  >
+                    <Store size={18} />
+
+                    <span>Painel da loja</span>
+                  </button>
+                  )}
+
                   {/* Meu perfil */}
                   <button
                     type="button"

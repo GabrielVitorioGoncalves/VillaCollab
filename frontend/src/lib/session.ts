@@ -1,12 +1,10 @@
 import type { Usuario } from "../types/api";
 
-// Mantém as chaves que o login já usava, para não derrubar sessões abertas.
 const TOKEN_KEY = "villacollab_token";
 const NAME_KEY = "villacollab_user_name";
 const SESSION_KEY = "villacollab_session";
 
 export const SESSION_EXPIRED_EVENT = "villacollab:session-expired";
-// Disparado em todo login/logout; o carrinho usa para trocar de dono.
 export const SESSION_CHANGED_EVENT = "villacollab:session-changed";
 
 function notifyChanged() {
@@ -15,7 +13,7 @@ function notifyChanged() {
 
 export interface Session {
   token: string;
-  expiresAt?: number; // segundos (formato do Supabase)
+  expiresAt?: number;
   email?: string;
   usuario?: Usuario;
 }
@@ -32,7 +30,7 @@ export function getSession(): Session | null {
   const token = read(TOKEN_KEY);
   if (!token) return null;
 
-  let extra: Omit<Session, "token"> = {};
+  let extra: Omit<Session, "token">;
   try {
     extra = JSON.parse(read(SESSION_KEY) ?? "{}");
   } catch {
@@ -41,7 +39,6 @@ export function getSession(): Session | null {
 
   if (extra.expiresAt && extra.expiresAt * 1000 <= Date.now()) {
     removeKeys();
-    // Pode estar no meio de uma renderização: avisa os ouvintes depois.
     window.setTimeout(notifyChanged, 0);
     return null;
   }
@@ -74,12 +71,11 @@ export function saveSession(session: Session) {
       })
     );
   } catch {
-    // Navegação privada pode bloquear o storage; o login segue valendo só nesta aba.
+    // sem storage, a sessão vale só nesta aba
   }
   notifyChanged();
 }
 
-// Depois de editar o perfil, mantém o nome do cabeçalho em dia.
 export function updateSessionUser(usuario: Usuario) {
   const session = getSession();
   if (session) saveSession({ ...session, usuario });

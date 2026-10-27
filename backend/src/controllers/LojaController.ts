@@ -11,10 +11,20 @@ const fields = z.object({
   categoria: z.string().trim().min(1).max(100).nullable().optional(),
   logo_url: urlImagemSchema.nullable().optional(),
   banner_url: urlImagemSchema.nullable().optional(),
-  filtros: filtrosLojaSchema.optional()
+  filtros: filtrosLojaSchema.optional(),
+  email_contato: z.email().max(255).nullable().optional(),
+  telefone: z.string().trim().max(20).regex(/^[0-9()+\-\s]*$/, 'Telefone inválido').nullable().optional(),
+  aceita_pedidos: z.boolean().optional(),
+  exibir_estoque: z.boolean().optional(),
+  confirmar_automaticamente: z.boolean().optional(),
+  prazo_preparo_dias: z.number().int().min(0).max(365).nullable().optional(),
+  pedido_minimo: z.number().min(0).max(99999999.99).multipleOf(0.01).optional(),
+  notificacoes: z.object({
+    email: z.boolean(), pedidos: z.boolean(), estoque_baixo: z.boolean()
+  }).strict().optional()
 });
-// Colunas públicas da loja (a nota é mantida pela função avaliar_produto).
-const columns = 'id, nome, slug, descricao, categoria, logo_url, banner_url, filtros, nota_media, total_avaliacoes, created_at';
+const columns = 'id, nome, slug, descricao, categoria, logo_url, banner_url, filtros, nota_media, total_avaliacoes, '
+  + 'email_contato, telefone, aceita_pedidos, exibir_estoque, prazo_preparo_dias, pedido_minimo, created_at';
 const createSchema = fields.strict();
 const updateSchema = fields.partial().strict().refine(
   value => Object.keys(value).length > 0, 'Informe pelo menos um campo'
@@ -33,7 +43,6 @@ export class LojaController {
       const { data, error } = await supabase.from('lojas')
         .select(`${columns}, produtos(count)`).order('nome');
       if (error) throw error;
-      // O Supabase devolve a contagem como produtos: [{ count }].
       res.json((data ?? []).map(({ produtos, ...loja }: { produtos?: { count: number }[] } & Record<string, unknown>) => ({
         ...loja,
         total_produtos: produtos?.[0]?.count ?? 0

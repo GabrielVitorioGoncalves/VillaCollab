@@ -7,7 +7,6 @@ interface RequestStatusProps {
   loadingText?: string;
 }
 
-// Estado de carregamento/erro reaproveitado pelas páginas que buscam dados na API.
 export function RequestStatus({
   loading,
   error,

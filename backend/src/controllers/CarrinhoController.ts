@@ -18,8 +18,6 @@ const putSchema = z.object({
 }).strict().refine(value => new Set(value.itens.map(chaveItem)).size === value.itens.length,
   'Não repita produtos no carrinho');
 
-// Junto com o item vêm os dados do produto e o nome da loja, para a tela montar o carrinho
-// sem uma consulta por produto.
 const select = 'produto_id, variacoes, quantidade, '
   + 'produtos(id, loja_id, nome, preco, estoque, imagens, variacoes, lojas(nome))';
 
@@ -33,7 +31,6 @@ export class CarrinhoController {
     } catch (error) { next(error); }
   }
 
-  // Substitui o carrinho inteiro: o frontend sempre manda o estado atual.
   async replace(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { itens } = putSchema.parse(req.body);

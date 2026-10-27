@@ -80,9 +80,7 @@ https://www.figma.com/design/5ubGBdbOpjNCYsWnDTHvlf/Collab?node-id=0-1
 
 O frontend e o backend estão publicados no Render, com banco de dados e autenticação no Supabase. 
 
-Já estão integrados ao backend: cadastro e login; lojas com categoria, logo, banner, filtros e nota; produtos com imagens, promoção, atributos, variações e nota; carrinho por usuário (salvo na conta; sem login fica no navegador e passa para a conta ao entrar); pedidos com endereço de entrega, forma de pagamento e variações, um por loja; histórico, detalhe, cancelamento e avaliação de pedidos; perfil com telefone, endereço, troca de e-mail e de senha.
-
-A cobrança online (PIX e cartão) ainda não está ligada a um gateway: o pedido registra a forma de pagamento e as parcelas, mas os dados do cartão não saem do navegador.
+O cadastro e o login já estão integrados enquanto as demais funcionalidades continuam em desenvolvimento.
 
 Ao realizar o cadastro, seu email deve ser um que você possua acesso para confirmar a verificação.
 
@@ -224,14 +222,6 @@ npm install
 npm run dev
 ```
 
-### Banco de dados (Supabase → SQL Editor), nesta ordem
-
-1. `backend/schema.sql`
-2. `backend/migrations/rls.sql`
-3. `backend/migrations/catalogo_perfil_pedidos.sql` (campos de vitrine, endereço, pagamento, variações e avaliações)
-4. `backend/migrations/carrinho.sql` (carrinho salvo por usuário)
-5. Opcional: `backend/seeds/loja_teste.sql` (loja de demonstração com filtros, promoção e variações)
-
 ---
 
 # Roadmap MVP
@@ -247,7 +237,7 @@ npm run dev
 - [ ] Cadastro de produtos
 - [ ] Dashboard do Lojista
 - [ ] Upload de imagens
-- [x] Carrinho de compras
+- [ ] Carrinho de compras
 - [ ] Checkout
 - [ ] Gateway de pagamento
 - [ ] Deploy

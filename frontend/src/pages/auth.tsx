@@ -31,9 +31,10 @@ export function Auth({
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = (location.state ?? {}) as AuthLocationState;
-  // Só aceita caminhos internos como destino depois do login.
-  const redirectTo =
-    locationState.from?.startsWith("/user/") ? locationState.from : "/user/home";
+  const requestedPath =
+    locationState.from?.startsWith("/user/") || locationState.from?.startsWith("/store/")
+      ? locationState.from
+      : undefined;
 
   const [mode, setMode] = useState<AuthMode>("login");
   const [error, setError] = useState("");
@@ -72,7 +73,8 @@ export function Auth({
           email: email.trim(),
           usuario: result.usuario,
         });
-        navigate(redirectTo, { replace: true });
+        const home = result.usuario.role === "lojista" ? "/store/dashboard" : "/user/home";
+        navigate(requestedPath ?? home, { replace: true });
       }
     } catch (caught) {
       setError(errorMessage(caught));

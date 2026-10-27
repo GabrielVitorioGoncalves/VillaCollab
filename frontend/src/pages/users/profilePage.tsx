@@ -71,7 +71,6 @@ export function ProfilePage() {
   const [passwordFeedback, setPasswordFeedback] = useState<Feedback | null>(null);
   const [savingPassword, setSavingPassword] = useState(false);
 
-  // A API devolve o e-mail no /auth/me; o do login fica como reserva.
   const currentEmail = user?.email ?? getSession()?.email ?? "";
 
   const applyUser = (updated: Usuario) => {

@@ -7,7 +7,6 @@ import { codigoSchema, enderecoSchema } from '../schemas/catalogoSchema';
 const idSchema = z.object({ id: z.uuid() });
 const lojaSchema = z.object({ loja_id: z.uuid() });
 
-// Mesmo produto pode aparecer mais de uma vez só com variações diferentes.
 function chaveItem(item: { produto_id: string; variacoes?: Record<string, string> }) {
   const variacoes = Object.entries(item.variacoes ?? {}).sort(([a], [b]) => a.localeCompare(b));
   return `${item.produto_id}|${JSON.stringify(variacoes)}`;
@@ -29,7 +28,8 @@ const createSchema = z.object({
   .refine(value => value.parcelas === undefined || value.forma_pagamento === 'cartao',
     'Parcelamento só no cartão');
 
-const statusSchema = z.object({ status: z.enum(['aceito', 'concluido', 'cancelado']) }).strict();
+const statusSchema = z.object({ status: z.enum(['aceito', 'enviado', 'concluido', 'cancelado']) }).strict();
+const idempotencySchema = z.uuid().optional();
 const select = 'id, usuario_id, loja_id, status, total, created_at, updated_at, endereco_entrega, forma_pagamento, parcelas, '
   + 'itens_pedido(id, produto_id, quantidade, preco_unitario, subtotal, variacoes)';
 
@@ -37,14 +37,15 @@ export class PedidoController {
   async create(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { loja_id, itens, endereco_entrega, forma_pagamento, parcelas } = createSchema.parse(req.body);
+      const chave = idempotencySchema.parse(req.get('Idempotency-Key') || undefined);
       const client = createSupabaseClient(req.accessToken);
-      // Campos opcionais só vão para a função quando informados.
       const { data: id, error } = await client.rpc('criar_pedido', {
         p_loja_id: loja_id,
         p_itens: itens,
         ...(endereco_entrega ? { p_endereco: endereco_entrega } : {}),
         ...(forma_pagamento ? { p_forma_pagamento: forma_pagamento } : {}),
-        ...(parcelas !== undefined ? { p_parcelas: parcelas } : {})
+        ...(parcelas !== undefined ? { p_parcelas: parcelas } : {}),
+        ...(chave ? { p_chave: chave } : {})
       });
       if (error) { if (rpcFailure(error, res)) return; throw error; }
       const { data, error: readError } = await client.from('pedidos').select(select).eq('id', id).maybeSingle();

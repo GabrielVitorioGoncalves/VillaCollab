@@ -42,6 +42,7 @@ async function loadOrder(id: string): Promise<OrderData> {
 const progressSteps: { status: PedidoStatus; label: string }[] = [
   { status: "pendente", label: "Pedido realizado" },
   { status: "aceito", label: "Aceito pela loja" },
+  { status: "enviado", label: "Enviado" },
   { status: "concluido", label: "Concluído" },
 ];
 
@@ -379,7 +380,6 @@ export function OrderDetail() {
               </div>
             </Card>
 
-            {/* Andamento */}
             <Card className="p-6">
               <div>
                 <h2 className="text-lg font-semibold text-text">
@@ -540,7 +540,6 @@ function ProgressStep({
   );
 }
 
-// Nota de 1 a 5 para produtos de pedidos concluídos. Reenviar troca a nota.
 function RateProduct({ productId }: { productId: string }) {
   const [rating, setRating] = useState(0);
   const [sending, setSending] = useState(false);

@@ -15,15 +15,17 @@ export class ApiError extends Error {
 interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
-  // Envia o token salvo no login. Rotas públicas (lojas, produtos) não precisam.
+  file?: Blob;
+  headers?: Record<string, string>;
   auth?: boolean;
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = "GET", body, auth = false } = options;
-  const headers: Record<string, string> = {};
+  const { method = "GET", body, file, auth = false } = options;
+  const headers: Record<string, string> = { ...options.headers };
 
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (file) headers["Content-Type"] = file.type || "application/octet-stream";
+  else if (body !== undefined) headers["Content-Type"] = "application/json";
 
   if (auth) {
     const token = getToken();
@@ -39,7 +41,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     response = await fetch(`${API_URL}/api${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: file ?? (body === undefined ? undefined : JSON.stringify(body)),
     });
   } catch {
     throw new ApiError("Não foi possível conectar ao servidor. Tente novamente.", 0);
@@ -51,8 +53,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   if (!response.ok) {
     if (response.status === 401 && auth) notifySessionExpired();
-    const message =
+    let message =
       data && typeof data.erro === "string" ? data.erro : "Não foi possível concluir a operação.";
+    const details = data?.detalhes && typeof data.detalhes === "object" ? Object.values(data.detalhes) : [];
+    const first = details.flat().find((item): item is string => typeof item === "string");
+    if (response.status === 400 && first) message = `${message}: ${first}`;
     throw new ApiError(message, response.status);
   }
 
