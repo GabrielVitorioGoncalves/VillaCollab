@@ -73,6 +73,17 @@ https://www.figma.com/design/5ubGBdbOpjNCYsWnDTHvlf/Collab?node-id=0-1
 
 ---
 
+# Aplicação publicada
+
+- **Frontend:** [Acessar Villa Collab](https://villacollab1.onrender.com/)
+- **Backend:** [Ativar a API](https://villacollab.onrender.com/api/health)
+
+O frontend e o backend estão publicados no Render, com banco de dados e autenticação no Supabase. 
+
+O cadastro e o login já estão integrados enquanto as demais funcionalidades continuam em desenvolvimento.
+
+Ao realizar o cadastro, seu email deve ser um que você possua acesso para confirmar a verificação.
+
 # Arquitetura
 
 ```text
@@ -218,9 +229,10 @@ npm run dev
 - [x] Levantamento de requisitos
 - [x] Modelagem da arquitetura
 - [x] Prototipação no Figma
-- [ ] Modelagem do banco de dados
-- [ ] Sistema de autenticação
-- [ ] Cadastro de usuários
+- [x] Modelagem do banco de dados
+- [x] Sistema de autenticação
+- [x] Cadastro de usuários
+- [x] Deploy inicial
 - [ ] Cadastro de lojas
 - [ ] Cadastro de produtos
 - [ ] Dashboard do Lojista
@@ -253,6 +265,8 @@ npm run dev
 | Yuri David Arins Cidral   | @YuriDavid1 |
 
 ---
+
+
 
 ## Licença
 

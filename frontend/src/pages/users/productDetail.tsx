@@ -1,97 +1,42 @@
 import { useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { AddToCartButton } from "../../components/marketplace/addCartButton";
 
-import {
-  ProductAttributes,
-  type ProductAttribute,
-} from "../../components/marketplace/productAtrributes";
-
-import {
-  ProductVariants,
-  type ProductVariant,
-} from "../../components/marketplace/productVariants";
+import { ProductAttributes } from "../../components/marketplace/productAtrributes";
+import { ProductVariants } from "../../components/marketplace/productVariants";
 
 import { ProductGallery } from "../../components/marketplace/productGallery";
 import { QuantitySelector } from "../../components/marketplace/quantitySelector";
+import { Button } from "../../components/ui/button";
+import { RequestStatus } from "../../components/ui/requestStatus";
+import { quantityInCart, useCart } from "../../contexts/cartContext";
+import { useRequest } from "../../hooks/useRequest";
+import {
+  promotionOf,
+  ratingOf,
+  toProductAttributes,
+  toProductVariants,
+} from "../../lib/catalog";
+import { isUuid, toNumber } from "../../lib/format";
+import { getProduct, getStore } from "../../lib/services";
 
-interface Product {
-  id: string;
-  name: string;
-  images: string[];
-  price: number;
-  oldPrice?: number;
-  storeName: string;
-  available: boolean;
-  description?: string;
-  rating?: number;
-  reviewCount?: number;
-  attributes: ProductAttribute[];
-  variants: ProductVariant[];
-  stock: number;
+async function loadProduct(id: string) {
+  if (!isUuid(id)) throw new Error("Produto não encontrado.");
+  const produto = await getProduct(id);
+  const loja = await getStore(produto.loja_id);
+  return { produto, loja };
 }
 
-const product: Product = {
-  id: "1",
-  name: "Mouse Gamer G403",
-  images: [
-  "https://images.unsplash.com/photo-1527814050087-3793815479db",
-  "https://images.unsplash.com/photo-1563297007-0686b7003af7",
-  "https://images.unsplash.com/photo-1586920740199-6c5b8f9a0f5b",
-  ],
-  price: 249.9,
-  oldPrice: 299.9,
-  storeName: "Tech House",
-  available: true,
-  description:
-    "Mouse gamer desenvolvido para oferecer precisão, conforto e desempenho durante o uso.",
-  rating: 4.8,
-  reviewCount: 124,
-  stock: 15,
-
-  attributes: [
-    {
-      id: "brand",
-      name: "Marca",
-      value: "Logitech",
-    },
-    {
-      id: "model",
-      name: "Modelo",
-      value: "G403",
-    },
-    {
-      id: "connection",
-      name: "Conexão",
-      value: "USB",
-    },
-    {
-      id: "weight",
-      name: "Peso",
-      value: "87 g",
-    },
-  ],
-
-  variants: [
-    {
-      id: "color",
-      name: "Cor",
-      options: [
-        {
-          id: "black",
-          label: "Preto",
-        },
-        {
-          id: "white",
-          label: "Branco",
-        },
-      ],
-    },
-  ],
-};
-
 export function ProductDetail() {
+  const { id = "" } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { lines, addItem } = useCart();
+
+  const { data, loading, error, reload } = useRequest(`produto:${id}`, () => loadProduct(id));
+
   const [quantity, setQuantity] = useState(1);
+  const [missingVariant, setMissingVariant] = useState(false);
 
   const [selectedVariants, setSelectedVariants] = useState<
     Record<string, string>
@@ -101,18 +46,60 @@ export function ProductDetail() {
     variantId: string,
     optionId: string
   ) => {
+    setMissingVariant(false);
     setSelectedVariants((current) => ({
       ...current,
       [variantId]: optionId,
     }));
   };
 
+  if (loading || error || !data) {
+    return (
+      <main className="min-h-screen bg-background">
+        <div className="mx-auto w-full max-w-[1240px] px-5 py-8">
+          <RequestStatus
+            loading={loading}
+            error={error ?? "Produto não encontrado."}
+            onRetry={isUuid(id) ? reload : undefined}
+            loadingText="Carregando produto..."
+          />
+        </div>
+      </main>
+    );
+  }
+
+  const { produto, loja } = data;
+
+  const product = {
+    id: produto.id,
+    name: produto.nome,
+    images: produto.imagens ?? [],
+    price: toNumber(produto.preco),
+    oldPrice: promotionOf(produto).oldPrice,
+    storeName: loja.nome,
+    available: produto.estoque > 0 && produto.ativo !== false && loja.aceita_pedidos !== false,
+    description: produto.descricao ?? undefined,
+    rating: ratingOf(produto)?.rating,
+    reviewCount: ratingOf(produto)?.reviewCount,
+    attributes: toProductAttributes(produto),
+    variants: toProductVariants(produto.variacoes),
+    stock: produto.estoque,
+  };
+
+  const inCart = quantityInCart(lines, produto.id);
+  const remaining = Math.max(0, product.stock - inCart);
+  const selectedQuantity = Math.min(quantity, Math.max(remaining, 1));
+  const pendingVariants = product.variants.filter(
+    (variant) => !selectedVariants[variant.id]
+  );
+
   const handleAddToCart = () => {
-    console.log("Adicionar ao carrinho:", {
-      product,
-      quantity,
-      selectedVariants,
-    });
+    if (pendingVariants.length > 0) {
+      setMissingVariant(true);
+      return;
+    }
+    const added = addItem(produto, loja.nome, selectedQuantity, selectedVariants);
+    if (added > 0) setQuantity(1);
   };
 
   return (
@@ -132,9 +119,13 @@ export function ProductDetail() {
           <div className="space-y-7">
             {/* Nome e preço */}
             <div className="space-y-4">
-              <p className="text-sm font-medium text-text-secondary">
+              <button
+                type="button"
+                onClick={() => navigate(`/user/paginaLoja/${loja.id}`)}
+                className="text-sm font-medium text-text-secondary transition-colors hover:text-text"
+              >
                 {product.storeName}
-              </p>
+              </button>
 
               <h1 className="text-3xl font-bold text-text">
                 {product.name}
@@ -168,7 +159,8 @@ export function ProductDetail() {
 
                 {product.reviewCount !== undefined && (
                   <span className="text-sm text-text-secondary">
-                    ({product.reviewCount} avaliações)
+                    ({product.reviewCount}{" "}
+                    {product.reviewCount === 1 ? "avaliação" : "avaliações"})
                   </span>
                 )}
               </div>
@@ -181,7 +173,7 @@ export function ProductDetail() {
                   Descrição
                 </h2>
 
-                <p className="text-sm leading-6 text-text-secondary">
+                <p className="whitespace-pre-line text-sm leading-6 text-text-secondary">
                   {product.description}
                 </p>
               </div>
@@ -194,22 +186,58 @@ export function ProductDetail() {
               onChange={handleVariantChange}
             />
 
+            {missingVariant && (
+              <p role="alert" className="text-sm text-danger">
+                Escolha {pendingVariants.map((variant) => variant.name.toLowerCase()).join(" e ")} para continuar.
+              </p>
+            )}
+
             {/* Quantidade */}
-            <QuantitySelector
-              value={quantity}
-              min={1}
-              max={product.stock}
-              onChange={setQuantity}
-            />
+            {product.available && remaining > 0 && (
+              <QuantitySelector
+                value={selectedQuantity}
+                min={1}
+                max={remaining}
+                onChange={setQuantity}
+              />
+            )}
 
             {/* Comprar */}
             <div className="space-y-3 border-t border-border pt-6">
-              <AddToCartButton
-                available={product.available}
-                onClick={handleAddToCart}
-              />
+              {product.available && remaining === 0 ? (
+                <>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => navigate("/user/carrinho")}
+                  >
+                    Ver carrinho
+                  </Button>
 
-              {product.stock <= 10 && (
+                  <p className="text-center text-xs text-text-secondary">
+                    Todas as unidades disponíveis já estão no seu carrinho.
+                  </p>
+                </>
+              ) : (
+                <AddToCartButton
+                  available={product.available}
+                  onClick={handleAddToCart}
+                />
+              )}
+
+              {produto.ativo === false && (
+                <p className="text-center text-xs text-text-secondary">
+                  Este produto não está mais à venda.
+                </p>
+              )}
+
+              {produto.ativo !== false && loja.aceita_pedidos === false && (
+                <p className="text-center text-xs text-text-secondary">
+                  A loja não está recebendo pedidos no momento.
+                </p>
+              )}
+
+              {loja.exibir_estoque !== false && product.available && remaining > 0 && product.stock <= 10 && (
                 <p className="text-center text-xs text-text-secondary">
                   {product.stock}{" "}
                   {product.stock === 1
@@ -217,14 +245,36 @@ export function ProductDetail() {
                     : "unidades restantes"}
                 </p>
               )}
+
+              {inCart > 0 && remaining > 0 && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/user/carrinho")}
+                  className="
+                    w-full
+                    text-center
+                    text-sm
+                    font-medium
+                    text-text
+                    underline
+                    underline-offset-4
+                    transition-opacity
+                    hover:opacity-60
+                  "
+                >
+                  {inCart} no carrinho · ver carrinho
+                </button>
+              )}
             </div>
           </div>
         </section>
 
         {/* Características */}
-        <section className="mt-12 border-t border-border pt-10">
-          <ProductAttributes attributes={product.attributes} />
-        </section>
+        {product.attributes.length > 0 && (
+          <section className="mt-12 border-t border-border pt-10">
+            <ProductAttributes attributes={product.attributes} />
+          </section>
+        )}
       </div>
     </main>
   );

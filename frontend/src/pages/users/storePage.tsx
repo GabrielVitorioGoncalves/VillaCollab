@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { Star } from "lucide-react";
 
 import {
@@ -20,8 +21,14 @@ import { Pagination } from "../../components/marketplace/pagination";
 
 import {
   StoreFilterSidebar,
-  type StoreFilter,
 } from "../../components/marketplace/storeFilterSideBar";
+
+import { RequestStatus } from "../../components/ui/requestStatus";
+import { useCart } from "../../contexts/cartContext";
+import { useRequest } from "../../hooks/useRequest";
+import { promotionOf, ratingOf, toStoreFilters } from "../../lib/catalog";
+import { formatCurrency, isUuid, toNumber } from "../../lib/format";
+import { getStore, listStoreProducts } from "../../lib/services";
 
 interface Store {
   name: string;
@@ -35,243 +42,8 @@ interface Store {
 interface StoreProduct extends Product {
   createdAt?: string;
 
-  /*
-   * Filtros personalizados da loja.
-   *
-   * Exemplo:
-   *
-   * {
-   *   size: ["m", "l"],
-   *   color: ["black"]
-   * }
-   */
   filterValues?: Record<string, string[]>;
 }
-
-/* =========================================================
-   DADOS MOCK DA LOJA
-   ========================================================= */
-
-const store: Store = {
-  name: "Urban Store",
-  category: "Moda",
-  description:
-    "Moda urbana e acessórios para quem busca estilo e personalidade.",
-  banner_url: "",
-};
-
-/* =========================================================
-   FILTROS PERSONALIZADOS DA LOJA
-   ========================================================= */
-
-const storeFilters: StoreFilter[] = [
-  {
-    id: "size",
-    name: "Tamanho",
-    type: "checkbox",
-    options: [
-      {
-        id: "xxs",
-        label: "XXS",
-      },
-      {
-        id: "xs",
-        label: "XS",
-      },
-      {
-        id: "s",
-        label: "S",
-      },
-      {
-        id: "m",
-        label: "M",
-      },
-      {
-        id: "l",
-        label: "L",
-      },
-      {
-        id: "xl",
-        label: "XL",
-      },
-    ],
-  },
-  {
-    id: "color",
-    name: "Cor",
-    type: "radio",
-    options: [
-      {
-        id: "black",
-        label: "Preto",
-      },
-      {
-        id: "white",
-        label: "Branco",
-      },
-      {
-        id: "gray",
-        label: "Cinza",
-      },
-      {
-        id: "blue",
-        label: "Azul",
-      },
-    ],
-  },
-];
-
-/* =========================================================
-   PRODUTOS MOCK
-   ========================================================= */
-
-const products: StoreProduct[] = [
-  {
-    id: "1",
-    name: "Tênis Casual Urbano",
-    image: "",
-    price: 199.9,
-    oldPrice: 249.9,
-    storeName: "Urban Store",
-    category: "Calçados",
-    available: true,
-    discount: 20,
-    createdAt: "2026-09-10",
-    filterValues: {
-      size: ["38", "39", "40", "41"],
-      color: ["black", "white"],
-    },
-  },
-  {
-    id: "2",
-    name: "Camiseta Oversized",
-    image: "",
-    price: 89.9,
-    storeName: "Urban Store",
-    category: "Roupas",
-    available: true,
-    createdAt: "2026-09-09",
-    filterValues: {
-      size: ["s", "m", "l", "xl"],
-      color: ["black", "white", "gray"],
-    },
-  },
-  {
-    id: "3",
-    name: "Mochila Minimalista",
-    image: "",
-    price: 149.9,
-    oldPrice: 179.9,
-    storeName: "Urban Store",
-    category: "Acessórios",
-    available: true,
-    discount: 17,
-    createdAt: "2026-09-08",
-    filterValues: {
-      color: ["black", "gray"],
-    },
-  },
-  {
-    id: "4",
-    name: "Jaqueta Jeans",
-    image: "",
-    price: 279.9,
-    storeName: "Urban Store",
-    category: "Roupas",
-    available: true,
-    createdAt: "2026-09-07",
-    filterValues: {
-      size: ["m", "l", "xl"],
-      color: ["blue"],
-    },
-  },
-  {
-    id: "5",
-    name: "Boné Urban",
-    image: "",
-    price: 59.9,
-    storeName: "Urban Store",
-    category: "Acessórios",
-    available: true,
-    discount: 10,
-    createdAt: "2026-09-06",
-    filterValues: {
-      size: ["m"],
-      color: ["black", "white"],
-    },
-  },
-  {
-    id: "6",
-    name: "Calça Cargo",
-    image: "",
-    price: 189.9,
-    storeName: "Urban Store",
-    category: "Roupas",
-    available: true,
-    createdAt: "2026-09-05",
-    filterValues: {
-      size: ["s", "m", "l"],
-      color: ["black", "gray"],
-    },
-  },
-  {
-    id: "7",
-    name: "Tênis Street",
-    image: "",
-    price: 229.9,
-    oldPrice: 299.9,
-    storeName: "Urban Store",
-    category: "Calçados",
-    available: true,
-    discount: 23,
-    createdAt: "2026-09-04",
-    filterValues: {
-      color: ["black", "blue"],
-    },
-  },
-  {
-    id: "8",
-    name: "Carteira Minimalista",
-    image: "",
-    price: 79.9,
-    storeName: "Urban Store",
-    category: "Acessórios",
-    available: false,
-    createdAt: "2026-09-03",
-    filterValues: {
-      color: ["black", "brown"],
-    },
-  },
-  {
-    id: "9",
-    name: "Moletom Oversized",
-    image: "",
-    price: 219.9,
-    storeName: "Urban Store",
-    category: "Roupas",
-    available: true,
-    createdAt: "2026-09-02",
-    filterValues: {
-      size: ["m", "l", "xl"],
-      color: ["gray", "black"],
-    },
-  },
-  {
-    id: "10",
-    name: "Óculos Urban",
-    image: "",
-    price: 119.9,
-    oldPrice: 149.9,
-    storeName: "Urban Store",
-    category: "Acessórios",
-    available: true,
-    discount: 20,
-    createdAt: "2026-09-01",
-    filterValues: {
-      color: ["black", "white"],
-    },
-  },
-];
 
 /* =========================================================
    FILTROS GERAIS
@@ -317,28 +89,63 @@ const sortOptions: SortOption[] = [
 
 const PRODUCTS_PER_PAGE = 9;
 
+async function loadStore(id: string) {
+  if (!isUuid(id)) throw new Error("Loja não encontrada.");
+  const [loja, produtos] = await Promise.all([getStore(id), listStoreProducts(id)]);
+  return { loja, produtos };
+}
+
 /* =========================================================
    PÁGINA
    ========================================================= */
 
 export function StorePage() {
+  const { id = "" } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { addItem } = useCart();
+
+  const { data, loading, error, reload } = useRequest(`loja:${id}`, () => loadStore(id));
+
   const [search, setSearch] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
   const [sort, setSort] = useState("relevance");
   const [currentPage, setCurrentPage] = useState(1);
 
-  /*
-   * Filtros personalizados selecionados.
-   *
-   * Exemplo:
-   *
-   * {
-   *   size: ["m", "l"],
-   *   color: ["black"]
-   * }
-   */
   const [selectedFilters, setSelectedFilters] =
     useState<Record<string, string[]>>({});
+
+  const store: Store | null = data
+    ? {
+        name: data.loja.nome,
+        category: data.loja.categoria ?? undefined,
+        description: data.loja.descricao ?? undefined,
+        banner_url: data.loja.banner_url ?? undefined,
+        logo_url: data.loja.logo_url ?? undefined,
+        rating: ratingOf(data.loja)?.rating,
+      }
+    : null;
+
+  const storeFilters = useMemo(
+    () => (data ? toStoreFilters(data.loja) : []),
+    [data]
+  );
+
+  const products = useMemo<StoreProduct[]>(
+    () =>
+      (data?.produtos ?? []).map((produto) => ({
+        id: produto.id,
+        name: produto.nome,
+        image: produto.imagens?.[0],
+        price: toNumber(produto.preco),
+        ...promotionOf(produto),
+        storeName: data?.loja.nome ?? "",
+        category: produto.categoria ?? undefined,
+        available: produto.estoque > 0 && data?.loja.aceita_pedidos !== false,
+        createdAt: produto.created_at,
+        filterValues: produto.filtros ?? {},
+      })),
+    [data]
+  );
 
   /* =======================================================
      FILTRAGEM E ORDENAÇÃO
@@ -406,6 +213,14 @@ export function StorePage() {
        Ordenação
        ------------------------------------------------------- */
 
+    if (sort === "relevance") {
+      result.sort(
+        (a, b) =>
+          Number(b.available) - Number(a.available) ||
+          a.name.localeCompare(b.name, "pt-BR")
+      );
+    }
+
     if (sort === "price-asc") {
       result.sort((a, b) => a.price - b.price);
     }
@@ -428,7 +243,7 @@ export function StorePage() {
     }
 
     return result;
-  }, [search, selectedFilter, selectedFilters, sort]);
+  }, [products, search, selectedFilter, selectedFilters, sort]);
 
   /* =======================================================
      PAGINAÇÃO
@@ -528,9 +343,42 @@ export function StorePage() {
     setCurrentPage(1);
   }
 
+  function handleViewProduct(product: Product) {
+    navigate(`/user/detalhesProduto/${product.id}`);
+  }
+
+  function handleAddToCart(product: Product) {
+    const produto = data?.produtos.find((item) => item.id === product.id);
+    if (!produto || !data) return;
+
+    if ((produto.variacoes ?? []).length > 0) {
+      handleViewProduct(product);
+      return;
+    }
+
+    if (data.loja.aceita_pedidos === false) return;
+
+    addItem(produto, data.loja.nome, 1);
+  }
+
   /* =======================================================
      RENDER
      ======================================================= */
+
+  if (loading || error || !store) {
+    return (
+      <main className="min-h-screen bg-background">
+        <div className="mx-auto w-full max-w-[1240px] px-5 py-8">
+          <RequestStatus
+            loading={loading}
+            error={error ?? "Loja não encontrada."}
+            onRetry={isUuid(id) ? reload : undefined}
+            loadingText="Carregando loja..."
+          />
+        </div>
+      </main>
+    );
+  }
 
 return (
   <main className="min-h-screen bg-background">
@@ -593,6 +441,32 @@ return (
             {store.description && (
               <p className="mt-1 max-w-2xl text-sm text-text-secondary">
                 {store.description}
+              </p>
+            )}
+
+            {data && (data.loja.prazo_preparo_dias != null || toNumber(data.loja.pedido_minimo) > 0) && (
+              <p className="mt-2 text-xs text-text-secondary">
+                {[
+                  data.loja.prazo_preparo_dias != null
+                    ? data.loja.prazo_preparo_dias === 0
+                      ? "Pedidos preparados no mesmo dia"
+                      : `Prazo de preparo: até ${data.loja.prazo_preparo_dias} ${data.loja.prazo_preparo_dias === 1 ? "dia" : "dias"}`
+                    : "",
+                  toNumber(data.loja.pedido_minimo) > 0
+                    ? `Pedido mínimo: ${formatCurrency(data.loja.pedido_minimo)}`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            )}
+
+            {data?.loja.aceita_pedidos === false && (
+              <p
+                role="status"
+                className="mt-3 inline-block rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-800"
+              >
+                Esta loja não está recebendo pedidos no momento.
               </p>
             )}
           </div>
@@ -665,13 +539,14 @@ return (
             "
           >
 
-            {/* Filtros */}
-            <StoreFilterSidebar
-              filters={storeFilters}
-              selectedFilters={selectedFilters}
-              onChange={handleStoreFilterChange}
-              onClear={clearStoreFilters}
-            />
+            {storeFilters.length > 0 && (
+              <StoreFilterSidebar
+                filters={storeFilters}
+                selectedFilters={selectedFilters}
+                onChange={handleStoreFilterChange}
+                onClear={clearStoreFilters}
+              />
+            )}
 
             {/* Área dos produtos */}
             <div className="min-w-0 flex-1">
@@ -724,29 +599,43 @@ return (
                     text-center
                   "
                 >
-                  <h3 className="text-lg font-semibold text-text">
-                    Nenhum produto encontrado
-                  </h3>
+                  {products.length === 0 ? (
+                    <>
+                      <h3 className="text-lg font-semibold text-text">
+                        Esta loja ainda não tem produtos
+                      </h3>
 
-                  <p className="mt-2 text-sm text-text-secondary">
-                    Tente alterar sua busca ou os filtros.
-                  </p>
+                      <p className="mt-2 text-sm text-text-secondary">
+                        Volte mais tarde para ver as novidades.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-lg font-semibold text-text">
+                        Nenhum produto encontrado
+                      </h3>
 
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    className="
-                      mt-4
-                      text-sm
-                      font-medium
-                      text-text
-                      underline
-                      transition-opacity
-                      hover:opacity-60
-                    "
-                  >
-                    Limpar filtros
-                  </button>
+                      <p className="mt-2 text-sm text-text-secondary">
+                        Tente alterar sua busca ou os filtros.
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={clearFilters}
+                        className="
+                          mt-4
+                          text-sm
+                          font-medium
+                          text-text
+                          underline
+                          transition-opacity
+                          hover:opacity-60
+                        "
+                      >
+                        Limpar filtros
+                      </button>
+                    </>
+                  )}
                 </div>
               ) : (
 
@@ -764,18 +653,8 @@ return (
                     <ProductCard
                       key={product.id}
                       product={product}
-                      onView={(selectedProduct: Product) => {
-                        console.log(
-                          "Visualizar produto:",
-                          selectedProduct
-                        );
-                      }}
-                      onAddToCart={(selectedProduct: Product) => {
-                        console.log(
-                          "Adicionar ao carrinho:",
-                          selectedProduct
-                        );
-                      }}
+                      onView={handleViewProduct}
+                      onAddToCart={handleAddToCart}
                     />
                   ))}
                 </div>

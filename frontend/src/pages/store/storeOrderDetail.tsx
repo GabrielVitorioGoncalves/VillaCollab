@@ -16,6 +16,13 @@ import { PageHeader } from "../../components/layout/pageHeader";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
+import { RequestStatus } from "../../components/ui/requestStatus";
+import { useRequest } from "../../hooks/useRequest";
+import { ApiError, errorMessage } from "../../lib/api";
+import { variantLabel } from "../../lib/catalog";
+import { formatCurrency, formatDateTime, isUuid, shortOrderId, toNumber } from "../../lib/format";
+import { getStoreOrder, updateOrderStatus } from "../../lib/services";
+import type { PedidoLoja, PedidoStatus } from "../../types/api";
 
 type OrderStatus =
   | "Pendente"
@@ -27,96 +34,45 @@ type OrderStatus =
 interface OrderItem {
   id: string;
   name: string;
+  variant: string;
+  image?: string;
   quantity: number;
   price: number;
+  subtotal: number;
 }
 
-interface Order {
-  id: string;
-  customer: string;
-  email: string;
-  phone: string;
-  date: string;
-  status: OrderStatus;
-  paymentMethod: string;
-  address: string;
-  items: OrderItem[];
+const statusFromDb: Record<PedidoStatus, OrderStatus> = {
+  pendente: "Pendente",
+  aceito: "Confirmado",
+  enviado: "Enviado",
+  concluido: "Entregue",
+  cancelado: "Cancelado",
+};
+
+const statusToDb: Record<Exclude<OrderStatus, "Pendente">, Exclude<PedidoStatus, "pendente">> = {
+  Confirmado: "aceito",
+  Enviado: "enviado",
+  Entregue: "concluido",
+  Cancelado: "cancelado",
+};
+
+function paymentLabel(pedido: PedidoLoja) {
+  if (pedido.forma_pagamento === "pix") return "Pix";
+  if (pedido.forma_pagamento === "cartao") {
+    return `Cartão de crédito${pedido.parcelas && pedido.parcelas > 1 ? ` em ${pedido.parcelas}x` : " à vista"}`;
+  }
+  return "Não informado";
 }
 
-const mockOrders: Order[] = [
-  {
-    id: "PED-1024",
-    customer: "Mariana Costa",
-    email: "mariana@email.com",
-    phone: "(47) 99999-1234",
-    date: "20/10/2026 às 14:30",
-    status: "Pendente",
-    paymentMethod: "Cartão de crédito",
-    address: "Rua das Palmeiras, 120 - Centro, Joinville/SC",
-    items: [
-      {
-        id: "1",
-        name: "Camiseta básica",
-        quantity: 2,
-        price: 59.95,
-      },
-      {
-        id: "2",
-        name: "Boné casual",
-        quantity: 1,
-        price: 70,
-      },
-    ],
-  },
-  {
-    id: "PED-1023",
-    customer: "Rafael Mendes",
-    email: "rafael@email.com",
-    phone: "(47) 98888-5678",
-    date: "19/10/2026 às 10:15",
-    status: "Confirmado",
-    paymentMethod: "Pix",
-    address: "Rua Blumenau, 450 - América, Joinville/SC",
-    items: [
-      {
-        id: "3",
-        name: "Tênis casual",
-        quantity: 1,
-        price: 79.9,
-      },
-    ],
-  },
-  {
-    id: "PED-1022",
-    customer: "Ana Oliveira",
-    email: "ana@email.com",
-    phone: "(47) 97777-4321",
-    date: "19/10/2026 às 09:00",
-    status: "Enviado",
-    paymentMethod: "Cartão de crédito",
-    address: "Rua XV de Novembro, 80 - Centro, Joinville/SC",
-    items: [
-      {
-        id: "4",
-        name: "Bolsa casual",
-        quantity: 1,
-        price: 149.5,
-      },
-      {
-        id: "5",
-        name: "Carteira",
-        quantity: 2,
-        price: 50,
-      },
-    ],
-  },
-];
-
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
+function addressLines(pedido: PedidoLoja): string[] {
+  const endereco = pedido.endereco_entrega;
+  if (!endereco) return [];
+  return [
+    endereco.nome ?? "",
+    `${endereco.rua}, ${endereco.numero}${endereco.complemento ? ` - ${endereco.complemento}` : ""}`,
+    `${endereco.bairro}, ${endereco.cidade}/${endereco.estado}`,
+    `CEP ${endereco.cep}`,
+  ].filter(Boolean);
 }
 
 function getStatusStyle(status: OrderStatus) {
@@ -153,18 +109,31 @@ export function OrderDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams();
 
-  const order = mockOrders.find((item) => item.id === id);
-
-  const [status, setStatus] = useState<OrderStatus>(
-    order?.status ?? "Pendente",
+  const request = useRequest(`pedido-loja:${id}`, () =>
+    isUuid(id) ? getStoreOrder(id) : Promise.reject(new ApiError("Pedido não encontrado", 404))
   );
 
-  if (!order) {
+  const [saving, setSaving] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  const pedido = request.data;
+
+  if (!pedido) {
+    if (request.loading) {
+      return (
+        <div className="space-y-5">
+          <PageHeader title="Pedido" />
+          <RequestStatus loading loadingText="Carregando pedido..." />
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-5">
         <PageHeader
           title="Pedido não encontrado"
-          description="Não encontramos um pedido com esse identificador."
+          description={request.error ?? "Não encontramos um pedido com esse identificador."}
         />
 
         <Card className="p-8 text-center">
@@ -173,10 +142,13 @@ export function OrderDetailPage() {
             Verifique o código do pedido e tente novamente.
           </p>
 
-          <div className="mt-5">
+          <div className="mt-5 flex justify-center gap-2">
             <Button onClick={() => navigate("/store/pedidos")}>
               <ArrowLeft size={16} className="mr-2" />
               Voltar aos pedidos
+            </Button>
+            <Button variant="outline" onClick={request.reload}>
+              Tentar de novo
             </Button>
           </div>
         </Card>
@@ -184,25 +156,51 @@ export function OrderDetailPage() {
     );
   }
 
-  const subtotal = order.items.reduce(
-    (total, item) => total + item.price * item.quantity,
-    0,
-  );
+  const order = {
+    id: `#${shortOrderId(pedido.id)}`,
+    fullId: pedido.id,
+    customer: pedido.cliente?.nome ?? "Cliente",
+    email: pedido.cliente?.email ?? "Não informado",
+    phone: pedido.cliente?.telefone ?? "Não informado",
+    date: formatDateTime(pedido.created_at),
+    paymentMethod: paymentLabel(pedido),
+    address: addressLines(pedido),
+    items: pedido.itens_pedido.map<OrderItem>((item) => ({
+      id: item.id,
+      name: item.produtos?.nome ?? "Produto removido",
+      variant: variantLabel(item.produtos?.variacoes, item.variacoes) || Object.values(item.variacoes ?? {}).join(" · "),
+      image: item.produtos?.imagens?.[0],
+      quantity: item.quantidade,
+      price: toNumber(item.preco_unitario),
+      subtotal: toNumber(item.subtotal),
+    })),
+  };
+  const status = statusFromDb[pedido.status];
+
+  const subtotal = order.items.reduce((total, item) => total + item.subtotal, 0);
 
   const shipping = 0;
-  const total = subtotal + shipping;
+  const total = toNumber(pedido.total);
   const totalItems = order.items.reduce(
     (quantity, item) => quantity + item.quantity,
     0,
   );
 
-    function handleStatusChange(nextStatus: OrderStatus) {
-    setStatus(nextStatus);
-
-    console.log(
-        `Pedido ${id}: status alterado para ${nextStatus}`,
-    );
+  async function handleStatusChange(nextStatus: Exclude<OrderStatus, "Pendente">) {
+    if (!pedido || saving) return;
+    setSaving(true);
+    setActionError("");
+    try {
+      const updated = await updateOrderStatus(pedido.id, statusToDb[nextStatus]);
+      setConfirmCancel(false);
+      request.mutate({ ...pedido, status: updated.status, updated_at: updated.updated_at });
+    } catch (caught) {
+      setActionError(errorMessage(caught));
+      request.reload();
+    } finally {
+      setSaving(false);
     }
+  }
 
   return (
     <div className="space-y-6">
@@ -239,6 +237,7 @@ export function OrderDetailPage() {
           <div className="flex flex-wrap gap-2">
             {status === "Pendente" && (
               <Button
+                disabled={saving}
                 onClick={() => handleStatusChange("Confirmado")}
               >
                 <CheckCircle2 size={16} className="mr-2" />
@@ -247,23 +246,24 @@ export function OrderDetailPage() {
             )}
 
             {status === "Confirmado" && (
-              <Button onClick={() => handleStatusChange("Enviado")}>
+              <Button disabled={saving} onClick={() => handleStatusChange("Enviado")}>
                 <Truck size={16} className="mr-2" />
                 Marcar como enviado
               </Button>
             )}
 
             {status === "Enviado" && (
-              <Button onClick={() => handleStatusChange("Entregue")}>
+              <Button disabled={saving} onClick={() => handleStatusChange("Entregue")}>
                 <CheckCircle2 size={16} className="mr-2" />
                 Marcar como entregue
               </Button>
             )}
 
-            {(status === "Pendente" || status === "Confirmado") && (
+            {(status === "Pendente" || status === "Confirmado") && !confirmCancel && (
               <Button
                 variant="outline"
-                onClick={() => handleStatusChange("Cancelado")}
+                disabled={saving}
+                onClick={() => setConfirmCancel(true)}
               >
                 <XCircle size={16} className="mr-2" />
                 Cancelar pedido
@@ -271,6 +271,28 @@ export function OrderDetailPage() {
             )}
           </div>
         </div>
+
+        {confirmCancel && (
+          <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-4">
+            <p className="text-sm text-red-700">
+              Cancelar este pedido? Os itens voltam para o estoque e o cliente vê o pedido como cancelado.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="danger" disabled={saving} onClick={() => handleStatusChange("Cancelado")}>
+                Sim, cancelar pedido
+              </Button>
+              <Button variant="outline" disabled={saving} onClick={() => setConfirmCancel(false)}>
+                Voltar
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {actionError && (
+          <p role="alert" className="mt-4 text-sm text-danger">
+            {actionError}
+          </p>
+        )}
       </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -293,14 +315,23 @@ export function OrderDetailPage() {
                   className="flex items-center justify-between gap-4 p-5"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-background-secondary">
-                      <Package size={22} className="text-text-secondary" />
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-background-secondary">
+                      {item.image ? (
+                        <img src={item.image} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <Package size={22} className="text-text-secondary" />
+                      )}
                     </div>
 
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-text">
                         {item.name}
                       </p>
+                      {item.variant && (
+                        <p className="mt-1 text-xs text-text-secondary">
+                          {item.variant}
+                        </p>
+                      )}
                       <p className="mt-1 text-xs text-text-secondary">
                         Quantidade: {item.quantity}
                       </p>
@@ -309,7 +340,7 @@ export function OrderDetailPage() {
 
                   <div className="shrink-0 text-right">
                     <p className="text-sm font-semibold text-text">
-                      {formatCurrency(item.price * item.quantity)}
+                      {formatCurrency(item.subtotal)}
                     </p>
                     <p className="mt-1 text-xs text-text-secondary">
                       {formatCurrency(item.price)} / unidade
@@ -362,9 +393,17 @@ export function OrderDetailPage() {
               </h2>
             </div>
 
-            <p className="text-sm leading-6 text-text-secondary">
-              {order.address}
-            </p>
+            {order.address.length > 0 ? (
+              <div className="text-sm leading-6 text-text-secondary">
+                {order.address.map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm leading-6 text-text-secondary">
+                Endereço não informado neste pedido.
+              </p>
+            )}
           </Card>
         </div>
 
@@ -422,7 +461,7 @@ export function OrderDetailPage() {
               <p className="text-sm text-text-secondary">
                 Código do pedido
               </p>
-              <p className="mt-1 text-sm font-medium text-text">
+              <p className="mt-1 break-all text-sm font-medium text-text" title={order.fullId}>
                 {order.id}
               </p>
             </div>

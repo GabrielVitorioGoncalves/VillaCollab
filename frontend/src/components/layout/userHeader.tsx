@@ -1,22 +1,29 @@
 import {
   ChevronDown,
+  LogIn,
   LogOut,
   ShoppingCart,
+  Store,
   User,
 } from "lucide-react";
 
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { SearchBar } from "../search/searchBar";
+import { useCart } from "../../contexts/cartContext";
+import { clearSession, getSession, getUserName } from "../../lib/session";
 
 const SCROLL_THRESHOLD = 20;
 
 export function Header() {
-  const userName = sessionStorage.getItem("villacollab_user_name");
+  const userName = getUserName();
+  const isSeller = getSession()?.usuario?.role === "lojista";
+  const { count: cartCount, flush: flushCart } = useCart();
+  const [searchParams] = useSearchParams();
   const [visible, setVisible] = useState(true);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [searchValue, setSearchValue] = useState("");
+  const [searchValue, setSearchValue] = useState(searchParams.get("busca") ?? "");
 
   const lastScrollY = useRef(0);
   const accumulatedScroll = useRef(0);
@@ -89,17 +96,18 @@ export function Header() {
   const handleSearch = () => {
     const search = searchValue.trim();
 
-    if (!search) {
-      return;
-    }
-
-    console.log("Pesquisar lojas:", search);
+    navigate(search ? `/user/home?busca=${encodeURIComponent(search)}` : "/user/home");
   };
 
-  const handleLogout = () => {
+  const handleSearchChange = (value: string) => {
+    setSearchValue(value);
+    if (!value && searchParams.get("busca")) navigate("/user/home");
+  };
+
+  const handleLogout = async () => {
     setUserMenuOpen(false);
-    sessionStorage.removeItem("villacollab_token");
-    sessionStorage.removeItem("villacollab_user_name");
+    await flushCart();
+    clearSession();
     navigate("/");
   };
 
@@ -140,7 +148,7 @@ export function Header() {
         <div className="absolute left-1/2 w-full max-w-sm -translate-x-1/2">
           <SearchBar
             value={searchValue}
-            onChange={setSearchValue}
+            onChange={handleSearchChange}
             onSearch={handleSearch}
             placeholder="Buscar lojas..."
           />
@@ -151,9 +159,14 @@ export function Header() {
           {/* Carrinho */}
           <button
             type="button"
-            aria-label="Carrinho"
+            aria-label={
+              cartCount > 0
+                ? `Carrinho, ${cartCount} ${cartCount === 1 ? "item" : "itens"}`
+                : "Carrinho"
+            }
             onClick={() => navigate("/user/carrinho")}
             className="
+              relative
               flex
               h-10
               w-10
@@ -166,6 +179,29 @@ export function Header() {
             "
           >
             <ShoppingCart size={22} />
+
+            {cartCount > 0 && (
+              <span
+                className="
+                  absolute
+                  -right-0.5
+                  -top-0.5
+                  flex
+                  h-5
+                  min-w-5
+                  items-center
+                  justify-center
+                  rounded-full
+                  bg-primary
+                  px-1
+                  text-[11px]
+                  font-semibold
+                  text-white
+                "
+              >
+                {cartCount > 99 ? "99+" : cartCount}
+              </span>
+            )}
           </button>
 
           {/* Usuário */}
@@ -247,6 +283,61 @@ export function Header() {
                 </div>
 
                 <div className="p-1.5">
+                  {!userName ? (
+                  /* Entrar */
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      navigate("/");
+                    }}
+                    className="
+                      flex
+                      w-full
+                      items-center
+                      gap-3
+                      rounded-lg
+                      px-3
+                      py-2.5
+                      text-sm
+                      text-text
+                      transition-colors
+                      hover:bg-background-secondary
+                    "
+                  >
+                    <LogIn size={18} />
+
+                    <span>Entrar ou criar conta</span>
+                  </button>
+                  ) : (
+                  <>
+                  {isSeller && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      navigate("/store/dashboard");
+                    }}
+                    className="
+                      flex
+                      w-full
+                      items-center
+                      gap-3
+                      rounded-lg
+                      px-3
+                      py-2.5
+                      text-sm
+                      text-text
+                      transition-colors
+                      hover:bg-background-secondary
+                    "
+                  >
+                    <Store size={18} />
+
+                    <span>Painel da loja</span>
+                  </button>
+                  )}
+
                   {/* Meu perfil */}
                   <button
                     type="button"
@@ -324,6 +415,8 @@ export function Header() {
 
                     <span>Sair</span>
                   </button>
+                  </>
+                  )}
                 </div>
               </div>
             )}

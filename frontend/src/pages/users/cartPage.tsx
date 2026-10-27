@@ -1,104 +1,40 @@
-import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-import {
-  CartItem,
-  type CartProduct,
-} from "../../components/cart/cartItem";
-
+import { CartItem } from "../../components/cart/cartItem";
 import { CartSummary } from "../../components/cart/cartSummary";
-
-interface CartItemData {
-  id: string;
-  product: CartProduct;
-  quantity: number;
-}
-
-const initialCartItems: CartItemData[] = [
-  {
-    id: "cart-1",
-    product: {
-      id: "1",
-      name: "Tênis Casual Urbano",
-      image: "",
-      price: 199.9,
-      storeName: "Urban Store",
-    },
-    quantity: 1,
-  },
-  {
-    id: "cart-2",
-    product: {
-      id: "2",
-      name: "Camiseta Oversized",
-      image: "",
-      price: 89.9,
-      storeName: "Urban Store",
-    },
-    quantity: 2,
-  },
-  {
-    id: "cart-3",
-    product: {
-      id: "3",
-      name: "Mochila Minimalista",
-      image: "",
-      price: 149.9,
-      storeName: "Urban Store",
-    },
-    quantity: 1,
-  },
-];
+import { quantityInCart, useCart } from "../../contexts/cartContext";
+import { useRequest } from "../../hooks/useRequest";
+import { cartSubtotal, fetchCartProducts, groupByStore, lineProblem } from "../../lib/cart";
+import { getToken } from "../../lib/session";
 
 export function CartPage() {
-  const [cartItems, setCartItems] =
-    useState<CartItemData[]>(initialCartItems);
+  const navigate = useNavigate();
+  const { lines, setQuantity, removeItem, syncProducts } = useCart();
 
-  const subtotal = useMemo(() => {
-    return cartItems.reduce(
-      (total, item) =>
-        total + item.product.price * item.quantity,
-      0
-    );
-  }, [cartItems]);
+  const sync = useRequest(lines.length > 0 ? "carrinho" : null, async () => {
+    const products = await fetchCartProducts([...new Set(lines.map((line) => line.productId))]);
+    syncProducts(products);
+    return true;
+  });
 
+  const subtotal = cartSubtotal(lines);
   const shipping = 0;
-
-  function handleQuantityChange(
-    itemId: string,
-    quantity: number
-  ) {
-    setCartItems((current) =>
-      current.map((item) =>
-        item.id === itemId
-          ? {
-              ...item,
-              quantity,
-            }
-          : item
-      )
-    );
-  }
-
-  function handleRemove(itemId: string) {
-    setCartItems((current) =>
-      current.filter((item) => item.id !== itemId)
-    );
-  }
+  const storeCount = groupByStore(lines).length;
+  const hasProblems = lines.some((line) => lineProblem(line, lines) !== undefined);
 
   function handleCheckout() {
-    console.log("Finalizar compra:", {
-      items: cartItems,
-      subtotal,
-      shipping,
-      total: subtotal + shipping,
-    });
+    if (!getToken()) {
+      navigate("/", { state: { from: "/user/pagamento" } });
+      return;
+    }
+    navigate("/user/pagamento");
   }
 
   function handleContinueShopping() {
-    console.log("Continuar comprando");
+    navigate("/user/home");
   }
 
-  if (cartItems.length === 0) {
+  if (lines.length === 0) {
     return (
       <main className="min-h-screen bg-background">
         <div className="mx-auto w-full max-w-[1240px] px-5 py-10">
@@ -185,28 +121,42 @@ export function CartPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-text-secondary">
-                  {cartItems.length}{" "}
-                  {cartItems.length === 1
+                  {lines.length}{" "}
+                  {lines.length === 1
                     ? "item no carrinho"
                     : "itens no carrinho"}
                 </p>
+
+                {sync.error && (
+                  <p className="mt-2 text-sm text-text-secondary">
+                    Não conseguimos conferir o estoque agora. Os valores serão
+                    confirmados pela loja ao fechar o pedido.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-4">
-                {cartItems.map((item) => (
+                {lines.map((line) => (
                   <CartItem
-                    key={item.id}
-                    product={item.product}
-                    quantity={item.quantity}
+                    key={line.key}
+                    product={{
+                      id: line.productId,
+                      name: line.name,
+                      image: line.image,
+                      price: line.price,
+                      storeName: line.storeName,
+                      details: line.variantLabel,
+                    }}
+                    quantity={line.quantity}
+                    maxQuantity={line.stock - quantityInCart(lines, line.productId, line.key)}
+                    warning={lineProblem(line, lines)}
+                    onView={() =>
+                      navigate(`/user/detalhesProduto/${line.productId}`)
+                    }
                     onQuantityChange={(quantity) =>
-                      handleQuantityChange(
-                        item.id,
-                        quantity
-                      )
+                      setQuantity(line.key, quantity)
                     }
-                    onRemove={() =>
-                      handleRemove(item.id)
-                    }
+                    onRemove={() => removeItem(line.key)}
                   />
                 ))}
               </div>
@@ -236,6 +186,15 @@ export function CartPage() {
               subtotal={subtotal}
               shipping={shipping}
               onCheckout={handleCheckout}
+              checkoutDisabled={hasProblems || sync.loading}
+              checkoutLabel={sync.loading ? "Conferindo estoque..." : "Finalizar compra"}
+              note={
+                hasProblems
+                  ? "Resolva os avisos nos produtos para continuar."
+                  : storeCount > 1
+                    ? `Seu carrinho tem produtos de ${storeCount} lojas. Cada loja recebe um pedido separado.`
+                    : undefined
+              }
             />
           </aside>
         </section>

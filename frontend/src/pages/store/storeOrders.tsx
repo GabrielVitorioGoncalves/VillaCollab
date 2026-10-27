@@ -15,6 +15,11 @@ import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Badge } from "../../components/ui/badge";
+import { RequestStatus } from "../../components/ui/requestStatus";
+import { useRequest } from "../../hooks/useRequest";
+import { formatCurrency, formatShortDate, shortOrderId, toNumber } from "../../lib/format";
+import { listStoreOrders } from "../../lib/services";
+import type { PedidoStatus } from "../../types/api";
 
 type OrderStatus =
   | "Pendente"
@@ -25,63 +30,22 @@ type OrderStatus =
 
 interface Order {
   id: string;
+  code: string;
   customer: string;
+  email: string;
   date: string;
   items: number;
   total: number;
   status: OrderStatus;
 }
 
-const mockOrders: Order[] = [
-  {
-    id: "PED-1024",
-    customer: "Mariana Costa",
-    date: "20/10/2026",
-    items: 2,
-    total: 189.9,
-    status: "Pendente",
-  },
-  {
-    id: "PED-1023",
-    customer: "Rafael Mendes",
-    date: "19/10/2026",
-    items: 1,
-    total: 79.9,
-    status: "Confirmado",
-  },
-  {
-    id: "PED-1022",
-    customer: "Ana Oliveira",
-    date: "19/10/2026",
-    items: 3,
-    total: 249.5,
-    status: "Enviado",
-  },
-  {
-    id: "PED-1021",
-    customer: "Lucas Ferreira",
-    date: "18/10/2026",
-    items: 2,
-    total: 119.9,
-    status: "Entregue",
-  },
-  {
-    id: "PED-1020",
-    customer: "Camila Santos",
-    date: "17/10/2026",
-    items: 1,
-    total: 59.9,
-    status: "Cancelado",
-  },
-  {
-    id: "PED-1019",
-    customer: "Pedro Almeida",
-    date: "16/10/2026",
-    items: 4,
-    total: 329.9,
-    status: "Entregue",
-  },
-];
+const statusFromDb: Record<PedidoStatus, OrderStatus> = {
+  pendente: "Pendente",
+  aceito: "Confirmado",
+  enviado: "Enviado",
+  concluido: "Entregue",
+  cancelado: "Cancelado",
+};
 
 const statusOptions = [
   "Todos",
@@ -122,13 +86,6 @@ function getStatusIcon(status: OrderStatus) {
   }
 }
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
-}
-
 export function Orders() {
   const navigate = useNavigate();
 
@@ -136,29 +93,67 @@ export function Orders() {
   const [selectedStatus, setSelectedStatus] =
     useState<(typeof statusOptions)[number]>("Todos");
 
+  const request = useRequest("pedidos-da-loja", listStoreOrders);
+
+  const orders = useMemo<Order[]>(
+    () =>
+      (request.data ?? []).map((pedido) => ({
+        id: pedido.id,
+        code: `#${shortOrderId(pedido.id)}`,
+        customer: pedido.cliente?.nome ?? "Cliente",
+        email: pedido.cliente?.email ?? "",
+        date: formatShortDate(pedido.created_at),
+        items: pedido.itens_pedido.reduce((total, item) => total + item.quantidade, 0),
+        total: toNumber(pedido.total),
+        status: statusFromDb[pedido.status],
+      })),
+    [request.data],
+  );
+
   const filteredOrders = useMemo(() => {
-    return mockOrders.filter((order) => {
+    const term = search.trim().toLowerCase().replace(/^#/, "");
+
+    return orders.filter((order) => {
       const matchesSearch =
-        order.id.toLowerCase().includes(search.toLowerCase()) ||
-        order.customer.toLowerCase().includes(search.toLowerCase());
+        order.id.toLowerCase().includes(term) ||
+        order.code.toLowerCase().includes(term) ||
+        order.customer.toLowerCase().includes(term) ||
+        order.email.toLowerCase().includes(term);
 
       const matchesStatus =
         selectedStatus === "Todos" || order.status === selectedStatus;
 
       return matchesSearch && matchesStatus;
     });
-  }, [search, selectedStatus]);
+  }, [orders, search, selectedStatus]);
 
-  const totalOrders = mockOrders.length;
-  const pendingOrders = mockOrders.filter(
+  const totalOrders = orders.length;
+  const pendingOrders = orders.filter(
     (order) => order.status === "Pendente",
   ).length;
-  const shippedOrders = mockOrders.filter(
+  const shippedOrders = orders.filter(
     (order) => order.status === "Enviado",
   ).length;
-  const deliveredOrders = mockOrders.filter(
+  const deliveredOrders = orders.filter(
     (order) => order.status === "Entregue",
   ).length;
+
+  if (!request.data) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Pedidos"
+          description="Acompanhe e gerencie os pedidos recebidos pela sua loja."
+        />
+        <RequestStatus
+          loading={request.loading}
+          error={request.error}
+          onRetry={request.reload}
+          loadingText="Carregando pedidos..."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -222,7 +217,7 @@ export function Orders() {
                 type="text"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar por pedido ou cliente..."
+                placeholder="Buscar por pedido, cliente ou e-mail..."
                 className="pl-9"
               />
             </div>
@@ -267,7 +262,7 @@ export function Orders() {
                   className="transition-colors hover:bg-background"
                 >
                   <td className="whitespace-nowrap px-5 py-4 font-medium text-text">
-                    {order.id}
+                    {order.code}
                   </td>
 
                   <td className="whitespace-nowrap px-5 py-4 text-text">
@@ -320,10 +315,12 @@ export function Orders() {
                       className="mx-auto mb-3 text-muted"
                     />
                     <p className="font-medium text-text">
-                      Nenhum pedido encontrado
+                      {totalOrders === 0 ? "Nenhum pedido ainda" : "Nenhum pedido encontrado"}
                     </p>
                     <p className="mt-1 text-sm">
-                      Tente alterar a busca ou o filtro de status.
+                      {totalOrders === 0
+                        ? "Os pedidos feitos na sua loja aparecem aqui."
+                        : "Tente alterar a busca ou o filtro de status."}
                     </p>
                   </td>
                 </tr>

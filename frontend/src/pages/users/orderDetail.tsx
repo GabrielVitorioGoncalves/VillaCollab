@@ -1,170 +1,105 @@
-import { useNavigate, useParams } from "react-router-dom";
+import { useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { ProductImage } from "../../components/marketplace/productImage";
 import { Price } from "../../components/marketplace/price";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
+import { RequestStatus } from "../../components/ui/requestStatus";
+import { useRequest } from "../../hooks/useRequest";
+import { errorMessage } from "../../lib/api";
+import { fetchCartProducts } from "../../lib/cart";
+import { variantLabel } from "../../lib/catalog";
+import {
+  formatDate,
+  isUuid,
+  orderStatusConfig,
+  shortOrderId,
+  toNumber,
+} from "../../lib/format";
+import { cancelOrder, getOrder, getStore, rateProduct } from "../../lib/services";
+import type { Loja, Pedido, PedidoStatus, Produto } from "../../types/api";
 
-type OrderStatus =
-  | "delivered"
-  | "processing"
-  | "shipped"
-  | "cancelled";
-
-interface OrderProduct {
-  id: string;
-  name: string;
-  image?: string;
-  quantity: number;
-  price: number;
+interface OrderData {
+  pedido: Pedido;
+  loja: Loja | null;
+  produtos: Record<string, Produto | null>;
 }
 
-interface Order {
-  id: string;
-  storeName: string;
-  date: string;
-  status: OrderStatus;
-  products: OrderProduct[];
-  shipping: number;
-  paymentMethod: "pix" | "credit-card";
-  address: {
-    name: string;
-    street: string;
-    number: string;
-    complement?: string;
-    neighborhood: string;
-    city: string;
-    state: string;
-    cep: string;
-  };
+async function loadOrder(id: string): Promise<OrderData> {
+  if (!isUuid(id)) throw new Error("Pedido não encontrado.");
+  const pedido = await getOrder(id);
+  const [loja, produtos] = await Promise.all([
+    getStore(pedido.loja_id).catch(() => null),
+    fetchCartProducts(pedido.itens_pedido.map((item) => item.produto_id)).catch(
+      () => ({}) as Record<string, Produto | null>
+    ),
+  ]);
+  return { pedido, loja, produtos };
 }
 
-const orders: Order[] = [
-  {
-    id: "1001",
-    storeName: "Urban Store",
-    date: "23 de setembro de 2026",
-    status: "delivered",
-    products: [
-      {
-        id: "1",
-        name: "Tênis Casual Urbano",
-        image: "",
-        quantity: 1,
-        price: 199.9,
-      },
-      {
-        id: "2",
-        name: "Camiseta Oversized",
-        image: "",
-        quantity: 2,
-        price: 89.9,
-      },
-      {
-        id: "3",
-        name: "Mochila Minimalista",
-        image: "",
-        quantity: 1,
-        price: 149.9,
-      },
-    ],
-    shipping: 0,
-    paymentMethod: "pix",
-    address: {
-      name: "Lucas Leal",
-      street: "Rua Exemplo",
-      number: "123",
-      complement: "Apartamento 202",
-      neighborhood: "Centro",
-      city: "Joinville",
-      state: "SC",
-      cep: "89200-000",
-    },
-  },
-  {
-    id: "1002",
-    storeName: "Tech House",
-    date: "18 de setembro de 2026",
-    status: "shipped",
-    products: [
-      {
-        id: "4",
-        name: "Mouse Gamer G403",
-        image: "",
-        quantity: 1,
-        price: 249.9,
-      },
-    ],
-    shipping: 0,
-    paymentMethod: "credit-card",
-    address: {
-      name: "Lucas Leal",
-      street: "Rua Exemplo",
-      number: "123",
-      neighborhood: "Centro",
-      city: "Joinville",
-      state: "SC",
-      cep: "89200-000",
-    },
-  },
+const progressSteps: { status: PedidoStatus; label: string }[] = [
+  { status: "pendente", label: "Pedido realizado" },
+  { status: "aceito", label: "Aceito pela loja" },
+  { status: "enviado", label: "Enviado" },
+  { status: "concluido", label: "Concluído" },
 ];
-
-const statusConfig: Record<
-  OrderStatus,
-  {
-    label: string;
-    variant: "default" | "success" | "warning" | "danger";
-  }
-> = {
-  delivered: {
-    label: "Entregue",
-    variant: "success",
-  },
-  processing: {
-    label: "Processando",
-    variant: "warning",
-  },
-  shipped: {
-    label: "Enviado",
-    variant: "default",
-  },
-  cancelled: {
-    label: "Cancelado",
-    variant: "danger",
-  },
-};
 
 export function OrderDetail() {
   const navigate = useNavigate();
-  const { id } = useParams<{ id: string }>();
+  const location = useLocation();
+  const { id = "" } = useParams<{ id: string }>();
+  const justCreated = !!(location.state as { createdCount?: number } | null)?.createdCount;
 
-  const order = orders.find(
-    (currentOrder) => currentOrder.id === id
-  );
+  const { data, loading, error, reload, mutate } = useRequest(`pedido:${id}`, () => loadOrder(id));
 
-  if (!order) {
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-background">
+        <div className="mx-auto w-full max-w-[1240px] px-5 py-10">
+          <RequestStatus loading loadingText="Carregando pedido..." />
+        </div>
+      </main>
+    );
+  }
+
+  if (!data) {
+    const notFound = !isUuid(id) || error?.toLowerCase().includes("não encontrado");
+
     return (
       <main className="min-h-screen bg-background">
         <div className="mx-auto w-full max-w-[1240px] px-5 py-10">
           <Card className="p-10">
             <div className="text-center">
               <h1 className="text-xl font-semibold text-text">
-                Pedido não encontrado
+                {notFound ? "Pedido não encontrado" : "Não foi possível carregar o pedido"}
               </h1>
 
               <p className="mt-2 text-sm text-text-secondary">
-                O pedido informado não existe ou não está mais
-                disponível.
+                {notFound
+                  ? "O pedido informado não existe ou não está mais disponível."
+                  : error}
               </p>
 
-              <Button
-                className="mt-6"
-                variant="outline"
-                onClick={() => navigate("/pedidos")}
-              >
-                Voltar para pedidos
-              </Button>
+              <div className="mt-6 flex justify-center gap-3">
+                {!notFound && (
+                  <Button onClick={reload}>
+                    Tentar de novo
+                  </Button>
+                )}
+
+                <Button
+                  variant="outline"
+                  onClick={() => navigate("/user/pedidos")}
+                >
+                  Voltar para pedidos
+                </Button>
+              </div>
             </div>
           </Card>
         </div>
@@ -172,20 +107,37 @@ export function OrderDetail() {
     );
   }
 
-  const status = statusConfig[order.status];
-
-  const subtotal = order.products.reduce(
-    (total, product) =>
-      total + product.price * product.quantity,
-    0
-  );
-
-  const total = subtotal + order.shipping;
+  const { pedido, loja, produtos } = data;
+  const order = pedido;
+  const storeName = loja?.nome ?? "Loja";
+  const status = orderStatusConfig[order.status] ?? orderStatusConfig.pendente;
+  const total = toNumber(order.total);
+  const shipping = 0;
+  const subtotal = total - shipping;
+  const canCancel = order.status === "pendente";
 
   const paymentLabel =
-    order.paymentMethod === "pix"
+    order.forma_pagamento === "pix"
       ? "PIX"
-      : "Cartão de crédito";
+      : order.forma_pagamento === "cartao"
+        ? `Cartão de crédito${order.parcelas && order.parcelas > 1 ? ` em ${order.parcelas}x` : " à vista"}`
+        : "Não informada";
+
+  const reachedIndex = progressSteps.findIndex((step) => step.status === order.status);
+
+  const handleCancel = async () => {
+    setCancelling(true);
+    setCancelError("");
+    try {
+      const updated = await cancelOrder(order.id);
+      mutate({ ...data, pedido: updated });
+      setConfirmingCancel(false);
+    } catch (caught) {
+      setCancelError(errorMessage(caught));
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   return (
     <main className="min-h-screen bg-background">
@@ -206,6 +158,15 @@ export function OrderDetail() {
           ← Voltar para pedidos
         </button>
 
+        {justCreated && order.status === "pendente" && (
+          <div
+            role="status"
+            className="mb-6 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
+          >
+            Pedido enviado para a loja. Você pode acompanhar o andamento por aqui.
+          </div>
+        )}
+
         {/* Cabeçalho */}
         <section className="mb-8">
           <div
@@ -220,11 +181,11 @@ export function OrderDetail() {
           >
             <div>
               <h1 className="text-3xl font-bold text-text">
-                Pedido {order.id} - {order.storeName}
+                Pedido {shortOrderId(order.id)} - {storeName}
               </h1>
 
               <p className="mt-2 text-sm text-text-secondary">
-                Realizado em {order.date}
+                Realizado em {formatDate(order.created_at)}
               </p>
             </div>
 
@@ -252,8 +213,8 @@ export function OrderDetail() {
                 </h2>
 
                 <p className="mt-1 text-sm text-text-secondary">
-                  {order.products.length}{" "}
-                  {order.products.length === 1
+                  {order.itens_pedido.length}{" "}
+                  {order.itens_pedido.length === 1
                     ? "produto"
                     : "produtos"}{" "}
                   neste pedido
@@ -261,15 +222,16 @@ export function OrderDetail() {
               </div>
 
               <div className="mt-6 divide-y divide-border">
-                {order.products.map((product) => {
-                  const productSubtotal =
-                    product.price * product.quantity;
+                {order.itens_pedido.map((item) => {
+                  const product = produtos[item.produto_id];
+                  const name = product?.nome ?? "Produto indisponível";
 
                   return (
                     <div
-                      key={product.id}
+                      key={item.id}
                       className="
                         flex
+                        flex-wrap
                         gap-4
                         py-5
                         first:pt-0
@@ -278,8 +240,8 @@ export function OrderDetail() {
                     >
                       <div className="w-24 shrink-0">
                         <ProductImage
-                          image={product.image}
-                          alt={product.name}
+                          image={product?.imagens?.[0]}
+                          alt={name}
                           className="rounded-lg"
                         />
                       </div>
@@ -287,16 +249,35 @@ export function OrderDetail() {
                       <div className="flex min-w-0 flex-1 flex-col justify-between gap-3 sm:flex-row sm:items-center">
                         <div>
                           <h3 className="font-medium text-text">
-                            {product.name}
+                            {product ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  navigate(`/user/detalhesProduto/${item.produto_id}`)
+                                }
+                                className="text-left transition-opacity hover:opacity-60"
+                              >
+                                {name}
+                              </button>
+                            ) : (
+                              name
+                            )}
                           </h3>
 
+                          {item.variacoes && Object.keys(item.variacoes).length > 0 && (
+                            <p className="mt-1 text-sm text-text">
+                              {variantLabel(product?.variacoes, item.variacoes) ||
+                                Object.values(item.variacoes).join(" · ")}
+                            </p>
+                          )}
+
                           <p className="mt-1 text-sm text-text-secondary">
-                            Quantidade: {product.quantity}
+                            Quantidade: {item.quantidade}
                           </p>
 
                           <div className="mt-2">
                             <Price
-                              value={product.price}
+                              value={toNumber(item.preco_unitario)}
                               size="sm"
                             />
                           </div>
@@ -309,12 +290,16 @@ export function OrderDetail() {
 
                           <div className="mt-1">
                             <Price
-                              value={productSubtotal}
+                              value={toNumber(item.subtotal)}
                               size="sm"
                             />
                           </div>
                         </div>
                       </div>
+
+                      {order.status === "concluido" && product && (
+                        <RateProduct productId={item.produto_id} />
+                      )}
                     </div>
                   );
                 })}
@@ -333,35 +318,43 @@ export function OrderDetail() {
                 </p>
               </div>
 
-              <div className="mt-5 rounded-xl border border-border bg-background-secondary p-4">
-                <p className="font-medium text-text">
-                  {order.address.name}
-                </p>
+              {order.endereco_entrega ? (
+                <div className="mt-5 rounded-xl border border-border bg-background-secondary p-4">
+                  {order.endereco_entrega.nome && (
+                    <p className="font-medium text-text">
+                      {order.endereco_entrega.nome}
+                    </p>
+                  )}
 
-                <p className="mt-2 text-sm text-text-secondary">
-                  {order.address.street},{" "}
-                  {order.address.number}
-                </p>
-
-                {order.address.complement && (
-                  <p className="mt-1 text-sm text-text-secondary">
-                    {order.address.complement}
+                  <p className="mt-2 text-sm text-text-secondary">
+                    {order.endereco_entrega.rua},{" "}
+                    {order.endereco_entrega.numero}
                   </p>
-                )}
 
-                <p className="mt-1 text-sm text-text-secondary">
-                  {order.address.neighborhood}
-                </p>
+                  {order.endereco_entrega.complemento && (
+                    <p className="mt-1 text-sm text-text-secondary">
+                      {order.endereco_entrega.complemento}
+                    </p>
+                  )}
 
-                <p className="mt-1 text-sm text-text-secondary">
-                  {order.address.city} -{" "}
-                  {order.address.state}
-                </p>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {order.endereco_entrega.bairro}
+                  </p>
 
-                <p className="mt-1 text-sm text-text-secondary">
-                  CEP {order.address.cep}
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {order.endereco_entrega.cidade} -{" "}
+                    {order.endereco_entrega.estado}
+                  </p>
+
+                  <p className="mt-1 text-sm text-text-secondary">
+                    CEP {order.endereco_entrega.cep}
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-5 text-sm text-text-secondary">
+                  Este pedido foi feito sem endereço de entrega.
                 </p>
-              </div>
+              )}
             </Card>
 
             {/* Pagamento */}
@@ -382,9 +375,38 @@ export function OrderDetail() {
                 </p>
 
                 <p className="mt-1 text-sm text-text-secondary">
-                  Pagamento referente ao pedido {order.id}.
+                  Pagamento referente ao pedido {shortOrderId(order.id)}.
                 </p>
               </div>
+            </Card>
+
+            <Card className="p-6">
+              <div>
+                <h2 className="text-lg font-semibold text-text">
+                  Andamento
+                </h2>
+
+                <p className="mt-1 text-sm text-text-secondary">
+                  Atualizado em {formatDate(order.updated_at || order.created_at)}.
+                </p>
+              </div>
+
+              <ol className="mt-5 space-y-3">
+                {order.status === "cancelado" ? (
+                  <>
+                    <ProgressStep done label="Pedido realizado" />
+                    <ProgressStep done danger label="Pedido cancelado" />
+                  </>
+                ) : (
+                  progressSteps.map((step, index) => (
+                    <ProgressStep
+                      key={step.status}
+                      done={index <= reachedIndex}
+                      label={step.label}
+                    />
+                  ))
+                )}
+              </ol>
             </Card>
           </div>
 
@@ -412,16 +434,9 @@ export function OrderDetail() {
                     Frete
                   </span>
 
-                  {order.shipping === 0 ? (
-                    <span className="text-sm font-medium text-text">
-                      Grátis
-                    </span>
-                  ) : (
-                    <Price
-                      value={order.shipping}
-                      size="sm"
-                    />
-                  )}
+                  <span className="text-sm font-medium text-text">
+                    Grátis
+                  </span>
                 </div>
 
                 <div className="border-t border-border pt-4">
@@ -436,11 +451,146 @@ export function OrderDetail() {
                     />
                   </div>
                 </div>
+
+                {canCancel && (
+                  <div className="border-t border-border pt-4">
+                    {confirmingCancel ? (
+                      <div className="space-y-3">
+                        <p className="text-sm text-text">
+                          Cancelar este pedido? Os produtos voltam para o estoque da loja.
+                        </p>
+
+                        <div className="flex gap-3">
+                          <Button
+                            variant="danger"
+                            className="flex-1"
+                            onClick={handleCancel}
+                            disabled={cancelling}
+                          >
+                            {cancelling ? "Cancelando..." : "Sim, cancelar"}
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => setConfirmingCancel(false)}
+                            disabled={cancelling}
+                          >
+                            Manter
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setConfirmingCancel(true)}
+                      >
+                        Cancelar pedido
+                      </Button>
+                    )}
+
+                    {cancelError && (
+                      <p role="alert" className="mt-3 text-sm text-danger">
+                        {cancelError}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </Card>
           </aside>
         </div>
       </div>
     </main>
+  );
+}
+
+function ProgressStep({
+  label,
+  done,
+  danger = false,
+}: {
+  label: string;
+  done: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <li className="flex items-center gap-3">
+      <span
+        className={`
+          h-3
+          w-3
+          shrink-0
+          rounded-full
+          ${
+            danger
+              ? "bg-danger"
+              : done
+                ? "bg-primary"
+                : "border border-border bg-surface"
+          }
+        `}
+      />
+
+      <span className={`text-sm ${done ? "font-medium text-text" : "text-text-secondary"}`}>
+        {label}
+      </span>
+    </li>
+  );
+}
+
+function RateProduct({ productId }: { productId: string }) {
+  const [rating, setRating] = useState(0);
+  const [sending, setSending] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const send = async (value: number) => {
+    setSending(true);
+    setMessage("");
+    try {
+      await rateProduct(productId, value);
+      setRating(value);
+      setMessage("Obrigado pela avaliação!");
+    } catch (caught) {
+      setMessage(errorMessage(caught));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="flex w-full flex-wrap items-center gap-3 sm:pl-28">
+      <span className="text-sm text-text-secondary">
+        {rating ? "Sua nota:" : "Avalie este produto:"}
+      </span>
+
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((value) => (
+          <button
+            key={value}
+            type="button"
+            disabled={sending}
+            onClick={() => send(value)}
+            aria-label={`Dar nota ${value}`}
+            aria-pressed={rating === value}
+            className={`
+              text-xl
+              leading-none
+              transition-opacity
+              hover:opacity-60
+              disabled:cursor-not-allowed
+              ${value <= rating ? "text-text" : "text-muted"}
+            `}
+          >
+            ★
+          </button>
+        ))}
+      </div>
+
+      {message && (
+        <span className="text-sm text-text-secondary">{message}</span>
+      )}
+    </div>
   );
 }

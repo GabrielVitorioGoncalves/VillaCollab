@@ -1,56 +1,176 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { FormField } from "../../components/ui/formField";
 import { Input } from "../../components/ui/input";
 import { Price } from "../../components/marketplace/price";
+import { useCart } from "../../contexts/cartContext";
+import { useRequest } from "../../hooks/useRequest";
+import {
+  formatCep,
+  toAddressForm,
+  toEndereco,
+  validateAddress,
+  type AddressErrors,
+  type AddressForm,
+} from "../../lib/address";
+import { errorMessage } from "../../lib/api";
+import { cartSubtotal, groupByStore, lineProblem } from "../../lib/cart";
+import { formatCurrency, toNumber } from "../../lib/format";
+import { createOrder, getMe, listStores } from "../../lib/services";
 
 type PaymentMethod = "pix" | "credit-card";
 
-const orderItems = [
-  {
-    id: "1",
-    name: "Tênis Casual Urbano",
-    storeName: "Urban Store",
-    quantity: 1,
-    price: 199.9,
-  },
-  {
-    id: "2",
-    name: "Camiseta Oversized",
-    storeName: "Urban Store",
-    quantity: 2,
-    price: 89.9,
-  },
-  {
-    id: "3",
-    name: "Mochila Minimalista",
-    storeName: "Urban Store",
-    quantity: 1,
-    price: 149.9,
-  },
-];
+function newUuid(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+const MAX_LINES_PER_ORDER = 50;
 
 export function PaymentPage() {
+  const navigate = useNavigate();
+  const { lines, removeItems } = useCart();
+
   const [paymentMethod, setPaymentMethod] =
     useState<PaymentMethod>("pix");
+  const [installments, setInstallments] = useState(1);
 
-  const subtotal = orderItems.reduce(
-    (total, item) =>
-      total + item.price * item.quantity,
-    0
-  );
+  const profile = useRequest("perfil-checkout", getMe);
+  const [editedAddress, setEditedAddress] = useState<AddressForm | null>(null);
+  const address = editedAddress ?? toAddressForm(profile.data?.endereco, profile.data?.nome);
+  const [addressErrors, setAddressErrors] = useState<AddressErrors>({});
+
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const groups = groupByStore(lines);
+  const subtotal = cartSubtotal(lines);
 
   const shipping = 0;
   const total = subtotal + shipping;
 
-  const handlePayment = () => {
-    console.log("Pagamento:", {
-      paymentMethod,
-      total,
-    });
+  const hasProblems = lines.some((line) => lineProblem(line, lines) !== undefined);
+  const tooManyLines = groups.find((group) => group.lines.length > MAX_LINES_PER_ORDER);
+
+  const stores = useRequest("lojas-checkout", listStores);
+  const storeIssues = groups.flatMap((group) => {
+    const loja = stores.data?.find((item) => item.id === group.storeId);
+    if (!loja) return [];
+    if (loja.aceita_pedidos === false) {
+      return [`A ${group.storeName} não está recebendo pedidos no momento. Remova os produtos dela para continuar.`];
+    }
+    const minimo = toNumber(loja.pedido_minimo);
+    if (minimo > 0 && group.subtotal < minimo) {
+      return [`O pedido mínimo da ${group.storeName} é ${formatCurrency(minimo)}. Faltam ${formatCurrency(minimo - group.subtotal)}.`];
+    }
+    return [];
+  });
+
+  const idempotencyKeys = useRef(new Map<string, { signature: string; key: string }>());
+  const keyFor = (storeId: string, signature: string) => {
+    const saved = idempotencyKeys.current.get(storeId);
+    if (saved && saved.signature === signature) return saved.key;
+    const key = newUuid();
+    idempotencyKeys.current.set(storeId, { signature, key });
+    return key;
   };
+
+  const updateAddress = (field: keyof AddressForm, value: string) => {
+    setEditedAddress({ ...address, [field]: field === "cep" ? formatCep(value) : value });
+    setAddressErrors((current) => ({ ...current, [field]: undefined }));
+    setError("");
+  };
+
+  const handlePayment = async () => {
+    if (submitting) return;
+
+    const errors = validateAddress(address, true);
+    setAddressErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError("Confira o endereço de entrega.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
+
+    const endereco = { ...toEndereco(address, true), nome: address.nome.trim() };
+    const createdIds: string[] = [];
+
+    for (const group of groups) {
+      try {
+        const itens = group.lines.map((line) => ({
+          produto_id: line.productId,
+          quantidade: line.quantity,
+          ...(line.variants && Object.keys(line.variants).length > 0
+            ? { variacoes: line.variants }
+            : {}),
+        }));
+        const options = {
+          endereco_entrega: endereco,
+          forma_pagamento: paymentMethod === "pix" ? ("pix" as const) : ("cartao" as const),
+          ...(paymentMethod === "credit-card" ? { parcelas: installments } : {}),
+        };
+        const pedido = await createOrder(
+          group.storeId,
+          itens,
+          options,
+          keyFor(group.storeId, JSON.stringify([itens, options]))
+        );
+        idempotencyKeys.current.delete(group.storeId);
+        createdIds.push(pedido.id);
+        removeItems(group.lines.map((line) => line.key));
+      } catch (caught) {
+        const prefix =
+          createdIds.length > 0
+            ? `${createdIds.length === 1 ? "1 pedido foi criado" : `${createdIds.length} pedidos foram criados`}, mas o da ${group.storeName} falhou: `
+            : `Não foi possível fechar o pedido da ${group.storeName}: `;
+        setError(prefix + errorMessage(caught));
+        setSubmitting(false);
+        return;
+      }
+    }
+
+    navigate(
+      createdIds.length === 1 ? `/user/pedidos/${createdIds[0]}` : "/user/pedidos",
+      { replace: true, state: { createdCount: createdIds.length } }
+    );
+  };
+
+  if (lines.length === 0) {
+    return (
+      <main className="min-h-screen bg-background">
+        <div className="mx-auto w-full max-w-[1240px] px-5 py-10">
+          <Card className="p-10">
+            <div className="text-center">
+              <h1 className="text-xl font-semibold text-text">
+                Não há nada para pagar
+              </h1>
+
+              <p className="mt-2 text-sm text-text-secondary">
+                Seu carrinho está vazio.
+              </p>
+
+              <Button
+                className="mt-6"
+                variant="outline"
+                onClick={() => navigate("/user/home")}
+              >
+                Ver lojas
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-background">
@@ -85,8 +205,9 @@ export function PaymentPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-text-secondary">
-                  Informe os dados do endereço onde deseja receber
-                  seu pedido.
+                  {profile.data?.endereco && !editedAddress
+                    ? "Preenchemos com o endereço do seu perfil. Altere se quiser receber em outro lugar."
+                    : "Informe os dados do endereço onde deseja receber seu pedido."}
                 </p>
               </div>
 
@@ -95,9 +216,14 @@ export function PaymentPage() {
                 <FormField
                   label="Nome completo"
                   required
+                  error={addressErrors.nome}
                 >
                   <Input
                     placeholder="Digite seu nome completo"
+                    value={address.nome}
+                    error={!!addressErrors.nome}
+                    autoComplete="name"
+                    onChange={(event) => updateAddress("nome", event.target.value)}
                   />
                 </FormField>
 
@@ -106,18 +232,29 @@ export function PaymentPage() {
                   <FormField
                     label="CEP"
                     required
+                    error={addressErrors.cep}
                   >
                     <Input
                       placeholder="00000-000"
+                      value={address.cep}
+                      error={!!addressErrors.cep}
+                      inputMode="numeric"
+                      autoComplete="postal-code"
+                      onChange={(event) => updateAddress("cep", event.target.value)}
                     />
                   </FormField>
 
                   <FormField
                     label="Rua"
                     required
+                    error={addressErrors.rua}
                   >
                     <Input
                       placeholder="Nome da rua"
+                      value={address.rua}
+                      error={!!addressErrors.rua}
+                      autoComplete="address-line1"
+                      onChange={(event) => updateAddress("rua", event.target.value)}
                     />
                   </FormField>
                 </div>
@@ -127,9 +264,13 @@ export function PaymentPage() {
                   <FormField
                     label="Número"
                     required
+                    error={addressErrors.numero}
                   >
                     <Input
                       placeholder="Número"
+                      value={address.numero}
+                      error={!!addressErrors.numero}
+                      onChange={(event) => updateAddress("numero", event.target.value)}
                     />
                   </FormField>
 
@@ -138,6 +279,9 @@ export function PaymentPage() {
                   >
                     <Input
                       placeholder="Apartamento, bloco, casa..."
+                      value={address.complemento}
+                      autoComplete="address-line2"
+                      onChange={(event) => updateAddress("complemento", event.target.value)}
                     />
                   </FormField>
                 </div>
@@ -146,9 +290,13 @@ export function PaymentPage() {
                 <FormField
                   label="Bairro"
                   required
+                  error={addressErrors.bairro}
                 >
                   <Input
                     placeholder="Digite o bairro"
+                    value={address.bairro}
+                    error={!!addressErrors.bairro}
+                    onChange={(event) => updateAddress("bairro", event.target.value)}
                   />
                 </FormField>
 
@@ -157,19 +305,29 @@ export function PaymentPage() {
                   <FormField
                     label="Cidade"
                     required
+                    error={addressErrors.cidade}
                   >
                     <Input
                       placeholder="Digite a cidade"
+                      value={address.cidade}
+                      error={!!addressErrors.cidade}
+                      autoComplete="address-level2"
+                      onChange={(event) => updateAddress("cidade", event.target.value)}
                     />
                   </FormField>
 
                   <FormField
                     label="Estado"
                     required
+                    error={addressErrors.estado}
                   >
                     <Input
                       placeholder="UF"
                       maxLength={2}
+                      value={address.estado}
+                      error={!!addressErrors.estado}
+                      autoComplete="address-level1"
+                      onChange={(event) => updateAddress("estado", event.target.value.toUpperCase())}
                     />
                   </FormField>
                 </div>
@@ -341,6 +499,11 @@ export function PaymentPage() {
                   </p>
                 </div>
 
+                <p className="mt-4 rounded-lg border border-border bg-background-secondary px-4 py-3 text-xs text-text-secondary">
+                  A cobrança no cartão ainda não está ativa. Registramos só a forma de
+                  pagamento e as parcelas; os dados do cartão não são enviados nem guardados.
+                </p>
+
                 <div className="mt-6 space-y-5">
                   <FormField
                     label="Número do cartão"
@@ -348,6 +511,7 @@ export function PaymentPage() {
                   >
                     <Input
                       placeholder="0000 0000 0000 0000"
+                      autoComplete="off"
                     />
                   </FormField>
 
@@ -357,6 +521,7 @@ export function PaymentPage() {
                   >
                     <Input
                       placeholder="Nome completo"
+                      autoComplete="off"
                     />
                   </FormField>
 
@@ -365,7 +530,7 @@ export function PaymentPage() {
                       label="Validade"
                       required
                     >
-                      <Input placeholder="MM/AA" />
+                      <Input placeholder="MM/AA" autoComplete="off" />
                     </FormField>
 
                     <FormField
@@ -375,6 +540,7 @@ export function PaymentPage() {
                       <Input
                         placeholder="000"
                         type="password"
+                        autoComplete="off"
                       />
                     </FormField>
                   </div>
@@ -384,7 +550,8 @@ export function PaymentPage() {
                     required
                   >
                     <select
-                      defaultValue="1"
+                      value={installments}
+                      onChange={(event) => setInstallments(Number(event.target.value))}
                       className="
                         w-full
                         rounded-lg
@@ -400,29 +567,15 @@ export function PaymentPage() {
                         focus:border-primary
                       "
                     >
-                      <option value="1">
-                        1x de R$ {total.toFixed(2)}
-                      </option>
-
-                      <option value="2">
-                        2x de R$ {(total / 2).toFixed(2)}
-                      </option>
-
-                      <option value="3">
-                        3x de R$ {(total / 3).toFixed(2)}
-                      </option>
-
-                      <option value="4">
-                        4x de R$ {(total / 4).toFixed(2)}
-                      </option>
-
-                      <option value="5">
-                        5x de R$ {(total / 5).toFixed(2)}
-                      </option>
-
-                      <option value="6">
-                        6x de R$ {(total / 6).toFixed(2)}
-                      </option>
+                      {[1, 2, 3, 4, 5, 6].map((value) => (
+                        <option key={value} value={value}>
+                          {value}x de{" "}
+                          {(total / value).toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          })}
+                        </option>
+                      ))}
                     </select>
                   </FormField>
                 </div>
@@ -438,9 +591,9 @@ export function PaymentPage() {
               </h2>
 
               <div className="mt-5 space-y-4">
-                {orderItems.map((item) => (
+                {lines.map((item) => (
                   <div
-                    key={item.id}
+                    key={item.key}
                     className="flex items-start justify-between gap-4"
                   >
                     <div className="min-w-0">
@@ -448,11 +601,18 @@ export function PaymentPage() {
                         {item.name}
                       </p>
 
+                      {item.variantLabel && (
+                        <p className="mt-1 text-xs text-text-secondary">
+                          {item.variantLabel}
+                        </p>
+                      )}
+
                       <p className="mt-1 text-xs text-text-secondary">
                         {item.quantity}{" "}
                         {item.quantity === 1
                           ? "unidade"
                           : "unidades"}
+                        {groups.length > 1 && ` · ${item.storeName}`}
                       </p>
                     </div>
 
@@ -499,14 +659,59 @@ export function PaymentPage() {
                   </div>
                 </div>
 
-                <Button
-                  className="mt-2 w-full"
-                  onClick={handlePayment}
-                >
-                  {paymentMethod === "pix"
-                    ? "Gerar pagamento PIX"
-                    : "Finalizar pagamento"}
-                </Button>
+                {groups.length > 1 && (
+                  <p className="text-xs text-text-secondary">
+                    Produtos de {groups.length} lojas: cada loja recebe um pedido separado.
+                  </p>
+                )}
+
+                {error && (
+                  <p role="alert" className="text-sm text-danger">
+                    {error}
+                  </p>
+                )}
+
+                {hasProblems && (
+                  <p className="text-sm text-danger">
+                    Alguns produtos mudaram de estoque. Ajuste o carrinho antes
+                    de confirmar.
+                  </p>
+                )}
+
+                {tooManyLines && (
+                  <p className="text-sm text-danger">
+                    A {tooManyLines.storeName} aceita até {MAX_LINES_PER_ORDER}{" "}
+                    itens por pedido.
+                  </p>
+                )}
+
+                {storeIssues.map((issue) => (
+                  <p key={issue} className="text-sm text-danger">
+                    {issue}
+                  </p>
+                ))}
+
+                {hasProblems || tooManyLines || storeIssues.length > 0 ? (
+                  <Button
+                    className="mt-2 w-full"
+                    variant="outline"
+                    onClick={() => navigate("/user/carrinho")}
+                  >
+                    Voltar ao carrinho
+                  </Button>
+                ) : (
+                  <Button
+                    className="mt-2 w-full"
+                    onClick={handlePayment}
+                    disabled={submitting || profile.loading}
+                  >
+                    {submitting
+                      ? "Enviando..."
+                      : paymentMethod === "pix"
+                        ? "Gerar pagamento PIX"
+                        : "Finalizar pagamento"}
+                  </Button>
+                )}
 
                 <p className="text-center text-xs text-text-secondary">
                   Ao finalizar, você confirma seu pedido e

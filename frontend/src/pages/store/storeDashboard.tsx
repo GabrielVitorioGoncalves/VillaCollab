@@ -6,110 +6,159 @@ import {
   ShoppingBag,
   Wallet,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { Card } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { PageHeader } from "../../components/layout/pageHeader";
+import { RequestStatus } from "../../components/ui/requestStatus";
+import { useStore } from "../../components/layout/storeContext";
+import { useRequest } from "../../hooks/useRequest";
+import { formatCurrency, formatShortDate, shortOrderId, toNumber } from "../../lib/format";
+import { listMyProducts, listStoreOrders } from "../../lib/services";
+import { storeStatusLabel, storeStatusStyle } from "../../lib/storeOrderStatus";
+import type { PedidoLoja } from "../../types/api";
 
-const stats = [
-  {
-    title: "Vendas totais",
-    value: "R$ 8.450,00",
-    variation: "+12,5%",
-    positive: true,
-    description: "em relação ao mês anterior",
-    icon: Wallet,
-  },
-  {
-    title: "Pedidos recebidos",
-    value: "48",
-    variation: "+8,2%",
-    positive: true,
-    description: "em relação ao mês anterior",
-    icon: ShoppingBag,
-  },
-  {
-    title: "Produtos cadastrados",
-    value: "32",
-    variation: "4 sem estoque",
-    positive: false,
-    description: "produtos ativos na loja",
-    icon: Package,
-  },
-  {
-    title: "Pedidos pendentes",
-    value: "7",
-    variation: "Requer atenção",
-    positive: false,
-    description: "aguardando processamento",
-    icon: ClipboardList,
-  },
-];
+const LOW_STOCK = 5;
 
-const recentOrders = [
-  {
-    id: "1008",
-    customer: "Mariana Costa",
-    date: "20/10/2026",
-    total: 249.9,
-    status: "Pendente",
-  },
-  {
-    id: "1007",
-    customer: "Pedro Henrique",
-    date: "19/10/2026",
-    total: 159.9,
-    status: "Enviado",
-  },
-  {
-    id: "1006",
-    customer: "Ana Beatriz",
-    date: "19/10/2026",
-    total: 89.9,
-    status: "Concluído",
-  },
-  {
-    id: "1005",
-    customer: "Rafael Martins",
-    date: "18/10/2026",
-    total: 319.9,
-    status: "Processando",
-  },
-];
-
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
+async function loadDashboard() {
+  const [pedidos, produtos] = await Promise.all([listStoreOrders(), listMyProducts()]);
+  return { pedidos, produtos, now: Date.now() };
 }
 
-function getStatusClass(status: string) {
-  switch (status) {
-    case "Concluído":
-      return "bg-green-50 text-green-700";
-    case "Enviado":
-      return "bg-blue-50 text-blue-700";
-    case "Pendente":
-      return "bg-yellow-50 text-yellow-700";
-    default:
-      return "bg-background-secondary text-text-secondary";
+function monthKey(date: Date) {
+  return `${date.getFullYear()}-${date.getMonth()}`;
+}
+
+function monthComparison(nowMs: number, pedidos: PedidoLoja[], value: (pedido: PedidoLoja) => number) {
+  const now = new Date(nowMs);
+  const current = monthKey(now);
+  const previous = monthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  let thisMonth = 0;
+  let lastMonth = 0;
+  for (const pedido of pedidos) {
+    const key = monthKey(new Date(pedido.created_at));
+    if (key === current) thisMonth += value(pedido);
+    if (key === previous) lastMonth += value(pedido);
   }
+  if (lastMonth === 0) {
+    return { text: thisMonth > 0 ? "Primeiras vendas" : "Sem movimento", positive: thisMonth > 0, description: "comparado ao mês anterior" };
+  }
+  const change = ((thisMonth - lastMonth) / lastMonth) * 100;
+  const formatted = `${change >= 0 ? "+" : ""}${change.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+  return { text: formatted, positive: change >= 0, description: "em relação ao mês anterior" };
 }
 
 export function Dashboard() {
+  const navigate = useNavigate();
+  const { loja } = useStore();
+  const { data, loading, error, reload } = useRequest("painel", loadDashboard);
+
+  if (!data) {
+    return (
+      <div className="space-y-8">
+        <PageHeader
+          title="Dashboard"
+          description="Acompanhe o desempenho e a atividade da sua loja."
+        />
+        <RequestStatus loading={loading} error={error} onRetry={reload} loadingText="Carregando dados da loja..." />
+      </div>
+    );
+  }
+
+  const { pedidos, produtos, now } = data;
+  const validos = pedidos.filter((pedido) => pedido.status !== "cancelado");
+  const vendas = validos.reduce((total, pedido) => total + toNumber(pedido.total), 0);
+  const pendentes = pedidos.filter((pedido) => pedido.status === "pendente").length;
+  const semEstoque = produtos.filter((produto) => produto.estoque <= 0).length;
+  const ativos = produtos.filter((produto) => produto.ativo !== false).length;
+  const vendasMes = monthComparison(now, validos, (pedido) => toNumber(pedido.total));
+  const pedidosMes = monthComparison(now, pedidos, () => 1);
+  const estoqueBaixo = loja.notificacoes?.estoque_baixo
+    ? produtos.filter((produto) => produto.ativo !== false && produto.estoque > 0 && produto.estoque <= LOW_STOCK)
+    : [];
+
+  const stats = [
+    {
+      title: "Vendas totais",
+      value: formatCurrency(vendas),
+      variation: vendasMes.text,
+      positive: vendasMes.positive,
+      description: vendasMes.description,
+      icon: Wallet,
+    },
+    {
+      title: "Pedidos recebidos",
+      value: String(pedidos.length),
+      variation: pedidosMes.text,
+      positive: pedidosMes.positive,
+      description: pedidosMes.description,
+      icon: ShoppingBag,
+    },
+    {
+      title: "Produtos cadastrados",
+      value: String(produtos.length),
+      variation: `${semEstoque} sem estoque`,
+      positive: false,
+      description: `${ativos} ${ativos === 1 ? "ativo" : "ativos"} na vitrine`,
+      icon: Package,
+    },
+    {
+      title: "Pedidos pendentes",
+      value: String(pendentes),
+      variation: pendentes > 0 ? "Requer atenção" : "Tudo em dia",
+      positive: false,
+      description: "aguardando confirmação",
+      icon: ClipboardList,
+    },
+  ];
+
+  const recentOrders = pedidos.slice(0, 5);
+
   return (
     <div className="space-y-8">
       <PageHeader
         title="Dashboard"
         description="Acompanhe o desempenho e a atividade da sua loja."
         action={
-          <Button onClick={() => window.location.assign("/store/produtos/novo")}>
+          <Button onClick={() => navigate("/store/produtos/novo")}>
             Novo produto
           </Button>
         }
       />
+
+      {loja.aceita_pedidos === false && (
+        <Card className="border-red-200 bg-red-50 p-4">
+          <p className="text-sm text-red-700">
+            Sua loja não está recebendo pedidos. Os clientes veem os produtos, mas não conseguem finalizar a compra.{" "}
+            <button
+              type="button"
+              onClick={() => navigate("/store/configuracoes")}
+              className="font-medium underline underline-offset-4"
+            >
+              Alterar nas configurações
+            </button>
+          </p>
+        </Card>
+      )}
+
+      {loja.notificacoes?.pedidos !== false && pendentes > 0 && (
+        <Card className="border-yellow-200 bg-yellow-50 p-4">
+          <p className="text-sm text-yellow-800">
+            {pendentes === 1
+              ? "1 pedido aguarda sua confirmação."
+              : `${pendentes} pedidos aguardam sua confirmação.`}{" "}
+            <button
+              type="button"
+              onClick={() => navigate("/store/pedidos")}
+              className="font-medium underline underline-offset-4"
+            >
+              Ver pedidos
+            </button>
+          </p>
+        </Card>
+      )}
 
       <section>
         <div className="mb-4">
@@ -163,6 +212,29 @@ export function Dashboard() {
         </div>
       </section>
 
+      {estoqueBaixo.length > 0 && (
+        <section>
+          <Card className="border-yellow-200 bg-yellow-50 p-5">
+            <h2 className="text-sm font-semibold text-yellow-800">
+              Estoque baixo
+            </h2>
+            <ul className="mt-2 space-y-1 text-sm text-yellow-800">
+              {estoqueBaixo.map((produto) => (
+                <li key={produto.id}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/store/produtos/${produto.id}/editar`)}
+                    className="underline-offset-4 hover:underline"
+                  >
+                    {produto.nome}: {produto.estoque} {produto.estoque === 1 ? "unidade" : "unidades"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </section>
+      )}
+
       <section>
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -173,7 +245,7 @@ export function Dashboard() {
 
           <Button
             variant="outline"
-            onClick={() => window.location.assign("/store/pedidos")}
+            onClick={() => navigate("/store/pedidos")}
           >
             Ver todos os pedidos
           </Button>
@@ -206,27 +278,36 @@ export function Dashboard() {
                 {recentOrders.map((order) => (
                   <tr
                     key={order.id}
-                    className="transition-colors hover:bg-background/70"
+                    onClick={() => navigate(`/store/pedidos/${order.id}`)}
+                    className="cursor-pointer transition-colors hover:bg-background/70"
                   >
                     <td className="px-5 py-4 font-medium text-text">
-                      #{order.id}
+                      #{shortOrderId(order.id)}
                     </td>
                     <td className="px-5 py-4 text-text">
-                      {order.customer}
+                      {order.cliente?.nome ?? "Cliente"}
                     </td>
                     <td className="px-5 py-4 text-text-secondary">
-                      {order.date}
+                      {formatShortDate(order.created_at)}
                     </td>
                     <td className="px-5 py-4 font-medium text-text">
                       {formatCurrency(order.total)}
                     </td>
                     <td className="px-5 py-4">
-                      <Badge className={getStatusClass(order.status)}>
-                        {order.status}
+                      <Badge className={storeStatusStyle[order.status]}>
+                        {storeStatusLabel[order.status]}
                       </Badge>
                     </td>
                   </tr>
                 ))}
+
+                {recentOrders.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-10 text-center text-sm text-text-secondary">
+                      Nenhum pedido ainda. Os pedidos feitos na sua loja aparecem aqui.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

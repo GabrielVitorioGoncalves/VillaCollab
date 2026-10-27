@@ -1,117 +1,81 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { Plus, Trash2, SlidersHorizontal, Layers3 } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { Plus, Trash2, SlidersHorizontal, Layers3, X } from "lucide-react";
 
 import { PageHeader } from "../../components/layout/pageHeader";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { useStore } from "../../components/layout/storeContext";
+import { errorMessage } from "../../lib/api";
+import { generalCategories, uniqueSlug } from "../../lib/categories";
+import { updateStore } from "../../lib/services";
+import type { FiltroLoja } from "../../types/api";
 
-const STORAGE_KEY = "villacollab_store_catalog_settings";
+const MAX_FILTERS = 10;
+const MAX_OPTIONS = 50;
 
-const generalCategories = [
-  "Roupas",
-  "Calçados",
-  "Acessórios",
-  "Periféricos",
-  "Informática",
-  "Áudio",
-  "Casa e decoração",
-  "Beleza e cuidados pessoais",
-  "Esportes",
-  "Brinquedos",
-  "Livros",
-  "Alimentos e bebidas",
-];
-
-interface CustomFilter {
-  id: string;
-  name: string;
+function splitOptions(value: string) {
+  const seen = new Set<string>();
+  return value
+    .split(",")
+    .map((option) => option.trim())
+    .filter((option) => {
+      const key = option.toLowerCase();
+      if (!option || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
-interface CatalogSettings {
-  filters: CustomFilter[];
-}
-
-const defaultSettings: CatalogSettings = {
-  filters: [{ id: "filter-material", name: "Material" }],
-};
-
-function createId() {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function loadSettings(): CatalogSettings {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-
-    if (saved) {
-      const parsed: unknown = JSON.parse(saved);
-
-      if (typeof parsed === "object" && parsed !== null) {
-        const data = parsed as Record<string, unknown>;
-
-        if (Array.isArray(data.filters)) {
-          const filters: CustomFilter[] = data.filters
-            .filter(
-              (item): item is Record<string, unknown> =>
-                typeof item === "object" && item !== null,
-            )
-            .filter(
-              (item) =>
-                typeof item.name === "string" &&
-                item.name.trim().length > 0,
-            )
-            .map((item, index) => ({
-              id:
-                typeof item.id === "string"
-                  ? item.id
-                  : `filter-${index}-${item.name}`,
-              name: (item.name as string).trim(),
-            }));
-
-          return { filters };
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Não foi possível carregar os filtros salvos.", error);
-  }
-
-  return {
-    filters: defaultSettings.filters.map((filter) => ({ ...filter })),
-  };
+function withOptions(names: string[], existing: FiltroLoja["opcoes"] = []) {
+  const taken = existing.map((option) => option.id);
+  const created = names.map((nome) => {
+    const id = uniqueSlug(nome, taken, `opcao-${taken.length + 1}`);
+    taken.push(id);
+    return { id, nome: nome.slice(0, 60) };
+  });
+  return [...existing, ...created];
 }
 
 export function StoreCatalogSettings() {
-  const [settings, setSettings] = useState<CatalogSettings>(loadSettings);
+  const { loja, setLoja } = useStore();
+  const filters = loja.filtros ?? [];
   const [filterName, setFilterName] = useState("");
+  const [filterOptions, setFilterOptions] = useState("");
+  const [filterType, setFilterType] = useState<FiltroLoja["tipo"]>("checkbox");
+  const [newOption, setNewOption] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  useEffect(() => {
+  async function save(next: FiltroLoja[], success: string) {
+    setSaving(true);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    } catch (error) {
-      console.error(
-        "Não foi possível salvar as configurações neste navegador.",
-        error,
-      );
+      const updated = await updateStore(loja.id, { filtros: next });
+      setLoja(updated);
+      setMessage(success);
+      return true;
+    } catch (caught) {
+      setMessage(`Não foi possível salvar: ${errorMessage(caught)}`);
+      return false;
+    } finally {
+      setSaving(false);
     }
-  }, [settings]);
+  }
 
-  function addFilter(event: FormEvent<HTMLFormElement>) {
+  async function addFilter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
 
     const name = filterName.trim();
+    const options = splitOptions(filterOptions);
 
     if (!name) {
       setMessage("Informe um nome para o filtro.");
       return;
     }
 
-    const alreadyExists = settings.filters.some(
-      (filter) => filter.name.toLowerCase() === name.toLowerCase(),
+    const alreadyExists = filters.some(
+      (filter) => filter.nome.toLowerCase() === name.toLowerCase(),
     );
 
     if (alreadyExists) {
@@ -119,33 +83,73 @@ export function StoreCatalogSettings() {
       return;
     }
 
-    setSettings((current) => ({
-      ...current,
-      filters: [...current.filters, { id: createId(), name }],
-    }));
+    if (options.length === 0) {
+      setMessage("Informe pelo menos uma opção para o filtro, separadas por vírgula.");
+      return;
+    }
 
-    setFilterName("");
-    setMessage(`Filtro "${name}" criado com sucesso.`);
+    if (filters.length >= MAX_FILTERS) {
+      setMessage(`A loja pode ter no máximo ${MAX_FILTERS} filtros.`);
+      return;
+    }
+
+    const filter: FiltroLoja = {
+      id: uniqueSlug(name, filters.map((item) => item.id), `filtro-${filters.length + 1}`),
+      nome: name.slice(0, 60),
+      tipo: filterType,
+      opcoes: withOptions(options.slice(0, MAX_OPTIONS)),
+    };
+
+    if (await save([...filters, filter], `Filtro "${name}" criado com sucesso.`)) {
+      setFilterName("");
+      setFilterOptions("");
+    }
   }
 
-  function removeFilter(filter: CustomFilter) {
+  async function addOption(filter: FiltroLoja) {
+    const names = splitOptions(newOption[filter.id] ?? "").filter(
+      (name) => !filter.opcoes.some((option) => option.nome.toLowerCase() === name.toLowerCase()),
+    );
+    if (names.length === 0) return;
+    if (filter.opcoes.length + names.length > MAX_OPTIONS) {
+      setMessage(`Cada filtro pode ter no máximo ${MAX_OPTIONS} opções.`);
+      return;
+    }
+    const next = filters.map((item) =>
+      item.id === filter.id ? { ...item, opcoes: withOptions(names, item.opcoes) } : item,
+    );
+    if (await save(next, `Opções adicionadas em "${filter.nome}".`)) {
+      setNewOption((current) => ({ ...current, [filter.id]: "" }));
+    }
+  }
+
+  async function removeOption(filter: FiltroLoja, optionId: string) {
+    if (filter.opcoes.length <= 1) {
+      setMessage("Um filtro precisa de pelo menos uma opção. Para tirar a última, remova o filtro.");
+      return;
+    }
+    const next = filters.map((item) =>
+      item.id === filter.id ? { ...item, opcoes: item.opcoes.filter((option) => option.id !== optionId) } : item,
+    );
+    await save(next, `Opção removida de "${filter.nome}".`);
+  }
+
+  async function removeFilter(filter: FiltroLoja) {
     if (
       !window.confirm(
-        `Deseja realmente excluir o filtro "${filter.name}"?`,
+        `Deseja realmente excluir o filtro "${filter.nome}"?`,
       )
     ) {
       return;
     }
 
-    setSettings((current) => ({
-      ...current,
-      filters: current.filters.filter((item) => item.id !== filter.id),
-    }));
-
-    setMessage(`Filtro "${filter.name}" removido.`);
+    await save(
+      filters.filter((item) => item.id !== filter.id),
+      `Filtro "${filter.nome}" removido.`,
+    );
   }
 
-  function resetSettings() {
+  async function resetSettings() {
     if (
       !window.confirm(
         "Deseja restaurar os filtros iniciais? Os filtros personalizados serão removidos.",
@@ -154,12 +158,10 @@ export function StoreCatalogSettings() {
       return;
     }
 
-    setSettings({
-      filters: defaultSettings.filters.map((filter) => ({ ...filter })),
-    });
-
-    setFilterName("");
-    setMessage("Filtros restaurados para a configuração inicial.");
+    if (await save([], "Filtros restaurados para a configuração inicial (sem filtros personalizados).")) {
+      setFilterName("");
+      setFilterOptions("");
+    }
   }
 
   return (
@@ -234,7 +236,7 @@ export function StoreCatalogSettings() {
 
         <form
           onSubmit={addFilter}
-          className="flex flex-col gap-3 sm:flex-row sm:items-end"
+          className="flex flex-col gap-3 lg:flex-row lg:items-end"
         >
           <div className="min-w-0 flex-1">
             <label
@@ -254,7 +256,42 @@ export function StoreCatalogSettings() {
             />
           </div>
 
-          <Button type="submit">
+          <div className="min-w-0 flex-1">
+            <label
+              htmlFor="filterOptions"
+              className="mb-2 block text-sm font-medium text-text"
+            >
+              Opções (separadas por vírgula)
+            </label>
+
+            <Input
+              id="filterOptions"
+              value={filterOptions}
+              onChange={(event) => setFilterOptions(event.target.value)}
+              placeholder="Ex.: Algodão, Linho, Poliéster"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="filterType"
+              className="mb-2 block text-sm font-medium text-text"
+            >
+              Seleção
+            </label>
+
+            <select
+              id="filterType"
+              value={filterType}
+              onChange={(event) => setFilterType(event.target.value as FiltroLoja["tipo"])}
+              className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-text outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+            >
+              <option value="checkbox">Várias opções</option>
+              <option value="radio">Uma opção</option>
+            </select>
+          </div>
+
+          <Button type="submit" disabled={saving}>
             <Plus size={16} className="mr-2" />
             Adicionar filtro
           </Button>
@@ -268,11 +305,11 @@ export function StoreCatalogSettings() {
             </h3>
 
             <span className="rounded-full bg-background-secondary px-2.5 py-1 text-xs font-medium text-text-secondary">
-              {settings.filters.length}
+              {filters.length}
             </span>
           </div>
 
-          {settings.filters.length === 0 ? (
+          {filters.length === 0 ? (
             <div className="rounded-md border border-dashed border-border bg-background-secondary p-5 text-center">
               <SlidersHorizontal
                 size={22}
@@ -289,33 +326,81 @@ export function StoreCatalogSettings() {
             </div>
           ) : (
             <ul className="divide-y divide-border">
-              {settings.filters.map((filter) => (
+              {filters.map((filter) => (
                 <li
                   key={filter.id}
-                  className="flex items-center justify-between gap-3 py-3"
+                  className="py-3"
                 >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <input
-                      type="checkbox"
-                      disabled
-                      aria-label={`Prévia do filtro ${filter.name}`}
-                      className="h-4 w-4 shrink-0 accent-zinc-800"
-                    />
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <input
+                        type={filter.tipo === "radio" ? "radio" : "checkbox"}
+                        disabled
+                        aria-label={`Prévia do filtro ${filter.nome}`}
+                        className="h-4 w-4 shrink-0 accent-zinc-800"
+                      />
 
-                    <span className="min-w-0 break-words text-sm font-medium text-text">
-                      {filter.name}
-                    </span>
+                      <span className="min-w-0 break-words text-sm font-medium text-text">
+                        {filter.nome}
+                      </span>
+
+                      <span className="text-xs text-text-secondary">
+                        {filter.tipo === "radio" ? "uma opção" : "várias opções"}
+                      </span>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={saving}
+                      onClick={() => removeFilter(filter)}
+                      aria-label={`Remover filtro ${filter.nome}`}
+                    >
+                      <Trash2 size={16} className="mr-2" />
+                      Remover
+                    </Button>
                   </div>
 
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => removeFilter(filter)}
-                    aria-label={`Remover filtro ${filter.name}`}
-                  >
-                    <Trash2 size={16} className="mr-2" />
-                    Remover
-                  </Button>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 pl-7">
+                    {filter.opcoes.map((option) => (
+                      <span
+                        key={option.id}
+                        className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-3 py-1 text-xs text-text"
+                      >
+                        {option.nome}
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={() => removeOption(filter, option.id)}
+                          aria-label={`Remover opção ${option.nome}`}
+                          className="text-text-secondary hover:text-text"
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+
+                    <form
+                      className="flex items-center gap-1"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void addOption(filter);
+                      }}
+                    >
+                      <Input
+                        value={newOption[filter.id] ?? ""}
+                        onChange={(event) =>
+                          setNewOption((current) => ({ ...current, [filter.id]: event.target.value }))
+                        }
+                        placeholder="Nova opção"
+                        aria-label={`Nova opção para ${filter.nome}`}
+                        className="h-8 w-36 text-xs"
+                      />
+                      <Button type="submit" variant="ghost" disabled={saving} aria-label={`Adicionar opção em ${filter.nome}`}>
+                        <Plus size={14} />
+                      </Button>
+                    </form>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -328,6 +413,7 @@ export function StoreCatalogSettings() {
         <Button
           type="button"
           variant="outline"
+          disabled={saving || filters.length === 0}
           onClick={resetSettings}
         >
           Restaurar filtros padrão

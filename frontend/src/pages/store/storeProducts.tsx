@@ -1,6 +1,6 @@
 
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Plus, Search, Package } from "lucide-react";
 
 import { PageHeader } from "../../components/layout/pageHeader";
@@ -8,44 +8,61 @@ import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Badge } from "../../components/ui/badge";
+import { RequestStatus } from "../../components/ui/requestStatus";
+import { useRequest } from "../../hooks/useRequest";
+import { formatCurrency, toNumber } from "../../lib/format";
+import { errorMessage } from "../../lib/api";
+import { listMyProducts, updateProduct } from "../../lib/services";
 
-const products = [
-  {
-    id: "1",
-    name: "Mouse Gamer G403",
-    category: "Periféricos",
-    price: 249.9,
-    stock: 15,
-    status: "Ativo",
-  },
-  {
-    id: "2",
-    name: "Teclado Mecânico",
-    category: "Periféricos",
-    price: 399.9,
-    stock: 8,
-    status: "Ativo",
-  },
-  {
-    id: "3",
-    name: "Headset Gamer",
-    category: "Áudio",
-    price: 189.9,
-    stock: 0,
-    status: "Sem estoque",
-  },
-];
+type ProductStatus = "Ativo" | "Sem estoque" | "Inativo";
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
-}
+const statusStyle: Record<ProductStatus, string> = {
+  Ativo: "bg-green-50 text-green-700",
+  "Sem estoque": "bg-yellow-50 text-yellow-700",
+  Inativo: "bg-background-secondary text-text-secondary",
+};
 
 export function Products() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const location = useLocation();
+  const notice = (location.state as { notice?: string } | null)?.notice;
+  const request = useRequest("meus-produtos", listMyProducts);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState("");
+
+  async function toggleActive(id: string, ativo: boolean) {
+    if (!request.data || busyId) return;
+    setBusyId(id);
+    setActionError("");
+    try {
+      const updated = await updateProduct(id, { ativo });
+      request.mutate(request.data.map((produto) => (produto.id === id ? { ...produto, ...updated } : produto)));
+    } catch (caught) {
+      setActionError(errorMessage(caught));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const products = useMemo(
+    () =>
+      (request.data ?? []).map((produto) => ({
+        id: produto.id,
+        name: produto.nome,
+        category: produto.categoria ?? "—",
+        price: toNumber(produto.preco),
+        stock: produto.estoque,
+        image: produto.imagens?.[0],
+        active: produto.ativo !== false,
+        status: (produto.ativo === false
+          ? "Inativo"
+          : produto.estoque <= 0
+            ? "Sem estoque"
+            : "Ativo") as ProductStatus,
+      })),
+    [request.data]
+  );
 
   const filteredProducts = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -57,7 +74,7 @@ export function Products() {
         product.id.toLowerCase().includes(normalizedSearch)
       );
     });
-  }, [search]);
+  }, [products, search]);
 
   const totalProducts = products.length;
 
@@ -66,8 +83,25 @@ export function Products() {
   ).length;
 
   const outOfStockProducts = products.filter(
-    (product) => product.stock === 0,
+    (product) => product.stock <= 0,
   ).length;
+
+  if (!request.data) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Produtos"
+          description="Gerencie os produtos cadastrados na sua loja."
+        />
+        <RequestStatus
+          loading={request.loading}
+          error={request.error}
+          onRetry={request.reload}
+          loadingText="Carregando produtos..."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -81,6 +115,18 @@ export function Products() {
           </Button>
         }
       />
+
+      {notice && (
+        <p role="status" className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          {notice}
+        </p>
+      )}
+
+      {actionError && (
+        <p role="alert" className="text-sm text-danger">
+          {actionError}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card className="p-5">
@@ -138,7 +184,7 @@ export function Products() {
         </div>
 
         <div className="mt-5 overflow-x-auto">
-          <table className="w-full min-w-[700px] text-left text-sm">
+          <table className="w-full min-w-[780px] text-left text-sm">
             <thead className="border-y border-border bg-background">
               <tr>
                 <th className="px-4 py-3 font-medium text-text-secondary">
@@ -170,11 +216,15 @@ export function Products() {
                 >
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-background-secondary">
-                        <Package
-                          size={20}
-                          className="text-text-secondary"
-                        />
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-background-secondary">
+                        {product.image ? (
+                          <img src={product.image} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <Package
+                            size={20}
+                            className="text-text-secondary"
+                          />
+                        )}
                       </div>
                       <span className="font-medium text-text">
                         {product.name}
@@ -195,26 +245,29 @@ export function Products() {
                   </td>
 
                   <td className="px-4 py-4">
-                    <Badge
-                      className={
-                        product.status === "Ativo"
-                          ? "bg-green-50 text-green-700"
-                          : "bg-yellow-50 text-yellow-700"
-                      }
-                    >
+                    <Badge className={statusStyle[product.status]}>
                       {product.status}
                     </Badge>
                   </td>
 
                   <td className="px-4 py-4">
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        navigate(`/store/produtos/${product.id}/editar`)
-                      }
-                    >
-                      Editar
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          navigate(`/store/produtos/${product.id}/editar`)
+                        }
+                      >
+                        Editar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        disabled={busyId === product.id}
+                        onClick={() => toggleActive(product.id, !product.active)}
+                      >
+                        {product.active ? "Desativar" : "Ativar"}
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -225,7 +278,9 @@ export function Products() {
                     colSpan={6}
                     className="px-4 py-10 text-center text-sm text-text-secondary"
                   >
-                    Nenhum produto encontrado para "{search}".
+                    {totalProducts === 0
+                      ? "Nenhum produto cadastrado ainda. Use \"Novo produto\" para começar."
+                      : `Nenhum produto encontrado para "${search}".`}
                   </td>
                 </tr>
               )}

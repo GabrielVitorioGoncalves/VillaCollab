@@ -1,40 +1,36 @@
+import { useMemo } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+
 import { StoreGrid } from "../../components/marketplace/storeGrid";
 import type { Store } from "../../components/marketplace/storeCard";
-
-const stores: Store[] = [
-  {
-    id: "1",
-    name: "Urban Store",
-    category: "Moda",
-    description: "Moda urbana e acessórios.",
-    productCount: 124,
-  },
-  {
-    id: "2",
-    name: "Tech House",
-    category: "Eletrônicos",
-    description: "Tecnologia e acessórios para o dia a dia.",
-    productCount: 87,
-  },
-  {
-    id: "3",
-    name: "Street Wear",
-    category: "Moda",
-    description: "Roupas e acessórios urbanos.",
-    productCount: 63,
-  },
-  {
-    id: "4",
-    name: "Casa & Estilo",
-    category: "Casa e decoração",
-    description: "Produtos para deixar sua casa ainda melhor.",
-    productCount: 52,
-  },
-];
+import { RequestStatus } from "../../components/ui/requestStatus";
+import { useRequest } from "../../hooks/useRequest";
+import { toStoreCard } from "../../lib/catalog";
+import { listStores } from "../../lib/services";
 
 export function Home() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const search = (searchParams.get("busca") ?? "").trim();
+
+  const { data, loading, error, reload } = useRequest("lojas", listStores);
+
+  const stores = useMemo<Store[]>(() => {
+    const term = search.toLowerCase();
+
+    return (data ?? [])
+      .filter(
+        (loja) =>
+          !term ||
+          loja.nome.toLowerCase().includes(term) ||
+          loja.descricao?.toLowerCase().includes(term) ||
+          loja.categoria?.toLowerCase().includes(term)
+      )
+      .map(toStoreCard);
+  }, [data, search]);
+
   const handleViewStore = (store: Store) => {
-    console.log("Abrir loja:", store);
+    navigate(`/user/paginaLoja/${store.id}`);
   };
 
   return (
@@ -61,7 +57,7 @@ export function Home() {
         <section className="mt-8">
           <div className="mb-5">
             <h1 className="text-2xl font-bold text-text">
-              Lojas
+              {search ? `Lojas para "${search}"` : "Lojas"}
             </h1>
 
             <p className="mt-1 text-sm text-text-secondary">
@@ -69,11 +65,24 @@ export function Home() {
             </p>
           </div>
 
-          <StoreGrid
-            stores={stores}
-            onViewStore={handleViewStore}
-            emptyMessage="Nenhuma loja encontrada."
-          />
+          {loading || error ? (
+            <RequestStatus
+              loading={loading}
+              error={error}
+              onRetry={reload}
+              loadingText="Carregando lojas..."
+            />
+          ) : (
+            <StoreGrid
+              stores={stores}
+              onViewStore={handleViewStore}
+              emptyMessage={
+                search
+                  ? `Nenhuma loja encontrada para "${search}".`
+                  : "Nenhuma loja cadastrada ainda."
+              }
+            />
+          )}
         </section>
       </div>
     </main>

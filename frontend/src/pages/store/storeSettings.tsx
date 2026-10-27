@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import {
   Bell,
   Clock,
@@ -9,35 +9,62 @@ import {
 import { PageHeader } from "../../components/layout/pageHeader";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { useStore } from "../../components/layout/storeContext";
+import { errorMessage } from "../../lib/api";
+import { toNumber } from "../../lib/format";
+import { updateStore } from "../../lib/services";
 
 export function StoreSettings() {
-  const [acceptOrders, setAcceptOrders] = useState(true);
-  const [showStock, setShowStock] = useState(true);
-  const [emailNotifications, setEmailNotifications] = useState(true);
-  const [orderNotifications, setOrderNotifications] = useState(true);
-  const [lowStockNotifications, setLowStockNotifications] = useState(false);
-  const [autoConfirm, setAutoConfirm] = useState(false);
-  const [preparationTime, setPreparationTime] = useState("2");
-  const [minimumOrder, setMinimumOrder] = useState("0");
+  const { loja, setLoja } = useStore();
+  const [acceptOrders, setAcceptOrders] = useState(loja.aceita_pedidos ?? true);
+  const [showStock, setShowStock] = useState(loja.exibir_estoque ?? true);
+  const [emailNotifications, setEmailNotifications] = useState(loja.notificacoes?.email ?? true);
+  const [orderNotifications, setOrderNotifications] = useState(loja.notificacoes?.pedidos ?? true);
+  const [lowStockNotifications, setLowStockNotifications] = useState(loja.notificacoes?.estoque_baixo ?? false);
+  const [autoConfirm, setAutoConfirm] = useState(loja.confirmar_automaticamente ?? false);
+  const [preparationTime, setPreparationTime] = useState(
+    loja.prazo_preparo_dias === null || loja.prazo_preparo_dias === undefined ? "" : String(loja.prazo_preparo_dias),
+  );
+  const [minimumOrder, setMinimumOrder] = useState(String(toNumber(loja.pedido_minimo)));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
 
-  function handleSave(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
 
-    const settings = {
-      acceptOrders,
-      showStock,
-      emailNotifications,
-      orderNotifications,
-      lowStockNotifications,
-      autoConfirm,
-      preparationTime: Number(preparationTime),
-      minimumOrder: Number(minimumOrder),
-    };
+    const prazo = preparationTime.trim();
+    if (prazo && (!/^\d+$/.test(prazo) || Number(prazo) > 365)) {
+      return setError("O prazo de preparação precisa ser um número inteiro de 0 a 365 dias.");
+    }
+    const minimo = minimumOrder.trim().replace(",", ".") || "0";
+    if (!/^\d+(\.\d{1,2})?$/.test(minimo)) {
+      return setError("O valor mínimo precisa ser 0 ou mais, com até 2 casas decimais.");
+    }
 
-    // Simulação de salvamento até a integração com o backend.
-    console.log("Configurações da loja:", settings);
-    setSaved(true);
+    setSaving(true);
+    setError("");
+    try {
+      const updated = await updateStore(loja.id, {
+        aceita_pedidos: acceptOrders,
+        exibir_estoque: showStock,
+        confirmar_automaticamente: autoConfirm,
+        prazo_preparo_dias: prazo ? Number(prazo) : null,
+        pedido_minimo: Number(minimo),
+        notificacoes: {
+          email: emailNotifications,
+          pedidos: orderNotifications,
+          estoque_baixo: lowStockNotifications,
+        },
+      });
+      setLoja(updated);
+      setSaved(true);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -47,7 +74,7 @@ export function StoreSettings() {
         description="Gerencie as preferências e o funcionamento da sua loja."
       />
 
-      <form onSubmit={handleSave} className="space-y-6">
+      <form onSubmit={handleSave} className="space-y-6" noValidate>
         {/* Operação da loja */}
         <Card className="p-5 sm:p-6">
           <div className="mb-6 flex items-center gap-3">
@@ -68,7 +95,7 @@ export function StoreSettings() {
           <div className="divide-y divide-border">
             <SettingToggle
               title="Receber novos pedidos"
-              description="Permite que clientes façam pedidos na sua loja."
+              description="Desligado, a loja continua visível, mas ninguém consegue finalizar compra nela."
               checked={acceptOrders}
               onChange={(value) => {
                 setAcceptOrders(value);
@@ -78,7 +105,7 @@ export function StoreSettings() {
 
             <SettingToggle
               title="Exibir disponibilidade de estoque"
-              description="Mostra aos clientes se os produtos estão disponíveis."
+              description="Mostra aos clientes quantas unidades restam de cada produto."
               checked={showStock}
               onChange={(value) => {
                 setShowStock(value);
@@ -88,7 +115,7 @@ export function StoreSettings() {
 
             <SettingToggle
               title="Confirmar pedidos automaticamente"
-              description="Confirma os pedidos assim que forem recebidos. Esta opção é apenas demonstrativa."
+              description="Novos pedidos já entram como confirmados, sem esperar sua aprovação."
               checked={autoConfirm}
               onChange={(value) => {
                 setAutoConfirm(value);
@@ -134,12 +161,12 @@ export function StoreSettings() {
                   setPreparationTime(event.target.value);
                   setSaved(false);
                 }}
-                required
+                max="365"
                 className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-text outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               />
 
               <p className="mt-1 text-xs text-text-secondary">
-                Prazo estimado para preparar um pedido.
+                Prazo estimado para preparar um pedido. Aparece na página da loja; deixe vazio para não exibir.
               </p>
             </div>
 
@@ -161,12 +188,11 @@ export function StoreSettings() {
                   setMinimumOrder(event.target.value);
                   setSaved(false);
                 }}
-                required
                 className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-text outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               />
 
               <p className="mt-1 text-xs text-text-secondary">
-                Use 0 para não estabelecer um valor mínimo.
+                Use 0 para não estabelecer um valor mínimo. Vale para o total de produtos da loja no pedido.
               </p>
             </div>
           </div>
@@ -192,7 +218,7 @@ export function StoreSettings() {
           <div className="divide-y divide-border">
             <SettingToggle
               title="Notificações por e-mail"
-              description="Habilita o recebimento de notificações por e-mail."
+              description="A preferência fica salva. O envio de e-mails ainda não está configurado no servidor."
               checked={emailNotifications}
               onChange={(value) => {
                 setEmailNotifications(value);
@@ -202,7 +228,7 @@ export function StoreSettings() {
 
             <SettingToggle
               title="Atualizações de pedidos"
-              description="Receba avisos sobre novos pedidos e alterações de status."
+              description="Mostra no painel um aviso dos pedidos que aguardam sua confirmação."
               checked={orderNotifications}
               onChange={(value) => {
                 setOrderNotifications(value);
@@ -212,7 +238,7 @@ export function StoreSettings() {
 
             <SettingToggle
               title="Estoque baixo"
-              description="Receba avisos quando os produtos estiverem com pouco estoque."
+              description="Mostra no painel os produtos ativos com 5 unidades ou menos."
               checked={lowStockNotifications}
               onChange={(value) => {
                 setLowStockNotifications(value);
@@ -224,11 +250,17 @@ export function StoreSettings() {
 
         {/* Salvar */}
         <div className="flex flex-col-reverse justify-end  gap-3 sm:flex-row">
-          <Button type="submit">
+          <Button type="submit" disabled={saving}>
             <Save size={16} className="mr-2" />
-            Salvar configurações
+            {saving ? "Salvando..." : "Salvar configurações"}
           </Button>
         </div>
+
+        {error && (
+          <p role="alert" className="text-sm text-danger">
+            {error}
+          </p>
+        )}
 
         {saved && (
           <div

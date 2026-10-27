@@ -98,6 +98,6 @@ export class ProdutoService {
       .eq('loja_id', loja_id);
 
     if (error) throw new Error('Erro ao buscar produtos');
-    return data ?? [];
+    return (data ?? []).filter((produto: { ativo?: boolean }) => produto.ativo !== false);
   }
 }

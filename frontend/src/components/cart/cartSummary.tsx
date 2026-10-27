@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Price } from "../marketplace/price";
@@ -6,12 +8,18 @@ interface CartSummaryProps {
   subtotal: number;
   shipping?: number;
   onCheckout?: () => void;
+  checkoutDisabled?: boolean;
+  checkoutLabel?: string;
+  note?: ReactNode;
 }
 
 export function CartSummary({
   subtotal,
   shipping = 0,
   onCheckout,
+  checkoutDisabled = false,
+  checkoutLabel = "Finalizar compra",
+  note,
 }: CartSummaryProps) {
   const total = subtotal + shipping;
 
@@ -60,9 +68,16 @@ export function CartSummary({
         <Button
           className="mt-3 w-full"
           onClick={onCheckout}
+          disabled={checkoutDisabled}
         >
-          Finalizar compra
+          {checkoutLabel}
         </Button>
+
+        {note && (
+          <p className="text-center text-xs text-text-secondary">
+            {note}
+          </p>
+        )}
       </div>
     </Card>
   );

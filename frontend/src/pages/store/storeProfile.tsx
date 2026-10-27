@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import {
   Store,
   Phone,
   Mail,
   ImagePlus,
   Save,
+  X,
 } from "lucide-react";
 
 import { PageHeader } from "../../components/layout/pageHeader";
@@ -12,31 +13,132 @@ import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { FormField } from "../../components/ui/formField";
+import { useStore } from "../../components/layout/storeContext";
+import { errorMessage } from "../../lib/api";
+import { storeCategories } from "../../lib/categories";
+import { updateStore, uploadImage } from "../../lib/services";
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
+
+interface ImageSlotProps {
+  label: string;
+  addText: string;
+  current: string | null;
+  disabled: boolean;
+  wide?: boolean;
+  onPick: (file: File) => void;
+  onRemove: () => void;
+}
+
+function ImageSlot({ label, addText, current, disabled, wide, onPick, onRemove }: ImageSlotProps) {
+  function handleChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) onPick(file);
+  }
+
+  return (
+    <div>
+      <p className="mb-2 text-sm font-medium text-text">{label}</p>
+
+      {current ? (
+        <div className="relative flex min-h-36 items-center justify-center overflow-hidden rounded-lg border border-border bg-background-secondary">
+          <img
+            src={current}
+            alt={label}
+            className={wide ? "h-36 w-full object-cover" : "h-28 w-28 rounded-lg object-cover"}
+          />
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={disabled}
+            className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-white text-text shadow-sm transition-colors hover:bg-gray-100"
+            aria-label={`Remover ${label.toLowerCase()}`}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      ) : (
+        <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-border bg-background-secondary p-5 text-center">
+          <ImagePlus size={26} className="mb-2 text-text-secondary" />
+          <p className="text-sm font-medium text-text">
+            {disabled ? "Enviando..." : addText}
+          </p>
+          <p className="mt-1 text-xs text-text-secondary">
+            PNG, JPG ou WEBP, até 5 MB
+          </p>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={handleChange}
+            disabled={disabled}
+            className="sr-only"
+          />
+        </label>
+      )}
+    </div>
+  );
+}
 
 export function StoreProfile() {
-  const [name, setName] = useState("Minha Loja");
-  const [description, setDescription] = useState(
-    "Uma loja dedicada a oferecer produtos de qualidade aos nossos clientes.",
-  );
-  const [category, setCategory] = useState("Moda e acessórios");
-  const [email, setEmail] = useState("contato@minhaloja.com");
-  const [phone, setPhone] = useState("(47) 99999-0000");
+  const { loja, setLoja } = useStore();
+  const [name, setName] = useState(loja.nome);
+  const [description, setDescription] = useState(loja.descricao ?? "");
+  const [category, setCategory] = useState(loja.categoria ?? "");
+  const [email, setEmail] = useState(loja.email_contato ?? "");
+  const [phone, setPhone] = useState(loja.telefone ?? "");
+  const [logo, setLogo] = useState<string | null>(loja.logo_url ?? null);
+  const [banner, setBanner] = useState<string | null>(loja.banner_url ?? null);
+  const [uploading, setUploading] = useState<"logo" | "banner" | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleImage(tipo: "logo" | "banner", file: File) {
+    if (!IMAGE_TYPES.includes(file.type)) return setError("Use uma imagem PNG, JPG ou WEBP.");
+    if (file.size > MAX_IMAGE_BYTES) return setError("A imagem pode ter no máximo 5 MB.");
+    setUploading(tipo);
+    setError("");
+    setSaved(false);
+    try {
+      const { url } = await uploadImage(file, tipo);
+      if (tipo === "logo") setLogo(url);
+      else setBanner(url);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving || uploading) return;
 
-    const storeData = {
-      name,
-      description,
-      category,
-      email,
-      phone,
-    };
+    if (name.trim().length < 2) return setError("O nome da loja precisa ter pelo menos 2 caracteres.");
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setError("Informe um e-mail válido.");
+    if (phone.trim() && !/^[0-9()+\-\s]{8,20}$/.test(phone.trim())) return setError("Informe um telefone válido, só com números, espaços, parênteses e hífen.");
 
-    // Simulação de salvamento até a integração com o backend.
-    console.log("Dados da loja:", storeData);
-    setSaved(true);
+    setSaving(true);
+    setError("");
+    try {
+      const updated = await updateStore(loja.id, {
+        nome: name.trim(),
+        descricao: description.trim() || null,
+        categoria: category || null,
+        email_contato: email.trim() || null,
+        telefone: phone.trim() || null,
+        logo_url: logo,
+        banner_url: banner,
+      });
+      setLoja(updated);
+      setSaved(true);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -46,7 +148,7 @@ export function StoreProfile() {
         description="Gerencie as informações que seus clientes veem no marketplace."
       />
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6" noValidate>
         {/* Identidade da loja */}
         <Card className="p-5 sm:p-6">
           <div className="mb-6 flex items-center gap-3">
@@ -90,7 +192,7 @@ export function StoreProfile() {
                   }}
                   placeholder="Conte um pouco sobre sua loja..."
                   rows={4}
-                  required
+                  maxLength={5000}
                   className="w-full resize-y rounded-md border border-border bg-white px-3 py-2 text-sm text-text outline-none transition-colors placeholder:text-muted focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </FormField>
@@ -104,21 +206,17 @@ export function StoreProfile() {
                     setCategory(event.target.value);
                     setSaved(false);
                   }}
-                  required
                   className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-text outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
                 >
                   <option value="">Selecione uma categoria</option>
-                  <option value="Moda e acessórios">Moda e acessórios</option>
-                  <option value="Casa e decoração">Casa e decoração</option>
-                  <option value="Eletrônicos">Eletrônicos</option>
-                  <option value="Beleza e cuidados pessoais">
-                    Beleza e cuidados pessoais
-                  </option>
-                  <option value="Esportes">Esportes</option>
-                  <option value="Alimentos e bebidas">
-                    Alimentos e bebidas
-                  </option>
-                  <option value="Outros">Outros</option>
+                  {storeCategories.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                  {category && !storeCategories.includes(category) && (
+                    <option value={category}>{category}</option>
+                  )}
                 </select>
               </FormField>
             </div>
@@ -137,33 +235,30 @@ export function StoreProfile() {
           </div>
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            <div>
-              <p className="mb-2 text-sm font-medium text-text">Logo</p>
+            <ImageSlot
+              label="Logo"
+              addText="Adicionar logo"
+              current={logo}
+              disabled={uploading !== null || saving}
+              onPick={(file) => handleImage("logo", file)}
+              onRemove={() => {
+                setLogo(null);
+                setSaved(false);
+              }}
+            />
 
-              <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed border-border bg-background-secondary p-5 text-center">
-                <ImagePlus size={26} className="mb-2 text-text-secondary" />
-                <p className="text-sm font-medium text-text">
-                  Adicionar logo
-                </p>
-                <p className="mt-1 text-xs text-text-secondary">
-                  Envio de imagem será implementado posteriormente.
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-2 text-sm font-medium text-text">Banner</p>
-
-              <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed border-border bg-background-secondary p-5 text-center">
-                <ImagePlus size={26} className="mb-2 text-text-secondary" />
-                <p className="text-sm font-medium text-text">
-                  Adicionar banner
-                </p>
-                <p className="mt-1 text-xs text-text-secondary">
-                  Envio de imagem será implementado posteriormente.
-                </p>
-              </div>
-            </div>
+            <ImageSlot
+              label="Banner"
+              addText="Adicionar banner"
+              current={banner}
+              disabled={uploading !== null || saving}
+              wide
+              onPick={(file) => handleImage("banner", file)}
+              onRemove={() => {
+                setBanner(null);
+                setSaved(false);
+              }}
+            />
           </div>
         </Card>
 
@@ -194,7 +289,7 @@ export function StoreProfile() {
                   }}
                   placeholder="contato@loja.com"
                   className="pl-9"
-                  required
+                  maxLength={255}
                 />
               </div>
             </FormField>
@@ -214,7 +309,7 @@ export function StoreProfile() {
                   }}
                   placeholder="(47) 99999-9999"
                   className="pl-9"
-                  required
+                  maxLength={20}
                 />
               </div>
             </FormField>
@@ -225,21 +320,27 @@ export function StoreProfile() {
         {/* Ações */}
         <div className="flex flex-col-reverse justify-between gap-3 sm:flex-row sm:items-center">
           <p className="text-xs text-text-secondary">
-            As alterações ainda não são persistidas no banco de dados.
+            Nome, descrição, imagens e contato aparecem na página pública da loja.
           </p>
 
-          <Button type="submit">
+          <Button type="submit" disabled={saving || uploading !== null}>
             <Save size={16} className="mr-2" />
-            Salvar alterações
+            {saving ? "Salvando..." : "Salvar alterações"}
           </Button>
         </div>
+
+        {error && (
+          <p role="alert" className="text-sm text-danger">
+            {error}
+          </p>
+        )}
 
         {saved && (
           <div
             role="status"
             className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700"
           >
-            Dados simulados da loja salvos nesta tela.
+            Dados da loja salvos.
           </div>
         )}
       </form>

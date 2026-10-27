@@ -2,88 +2,28 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Price } from "../../components/marketplace/price";
-import { useNavigate } from "react-router-dom";
+import { RequestStatus } from "../../components/ui/requestStatus";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useRequest } from "../../hooks/useRequest";
+import { formatDate, orderStatusConfig, shortOrderId, toNumber } from "../../lib/format";
+import { listMyOrders, listStores } from "../../lib/services";
 
-type OrderStatus =
-  | "delivered"
-  | "processing"
-  | "shipped"
-  | "cancelled";
-
-interface Order {
-  id: string;
-  storeName: string;
-  date: string;
-  status: OrderStatus;
-  items: number;
-  total: number;
+async function loadOrders() {
+  const [pedidos, lojas] = await Promise.all([listMyOrders(), listStores()]);
+  const storeNames = new Map(lojas.map((loja) => [loja.id, loja.nome]));
+  return { pedidos, storeNames };
 }
-
-const orders: Order[] = [
-  {
-    id: "1001",
-    storeName: "Urban Store",
-    date: "23 de setembro de 2026",
-    status: "delivered",
-    items: 3,
-    total: 429.7,
-  },
-  {
-    id: "1002",
-    storeName: "Tech House",
-    date: "18 de setembro de 2026",
-    status: "shipped",
-    items: 1,
-    total: 249.9,
-  },
-  {
-    id: "1003",
-    storeName: "Street Wear",
-    date: "10 de setembro de 2026",
-    status: "processing",
-    items: 2,
-    total: 179.8,
-  },
-  {
-    id: "1004",
-    storeName: "Casa & Estilo",
-    date: "02 de setembro de 2026",
-    status: "cancelled",
-    items: 1,
-    total: 89.9,
-  },
-];
-
-const statusConfig: Record<
-  OrderStatus,
-  {
-    label: string;
-    variant: "default" | "success" | "warning" | "danger";
-  }
-> = {
-  delivered: {
-    label: "Entregue",
-    variant: "success",
-  },
-  processing: {
-    label: "Processando",
-    variant: "warning",
-  },
-  shipped: {
-    label: "Enviado",
-    variant: "default",
-  },
-  cancelled: {
-    label: "Cancelado",
-    variant: "danger",
-  },
-};
 
 export function MyOrders() {
     const navigate = useNavigate();
+    const location = useLocation();
+    const createdCount = (location.state as { createdCount?: number } | null)?.createdCount;
 
-    const handleViewOrder = (order: Order) => {
-        navigate(`/user/pedidos/${order.id}`);
+    const { data, loading, error, reload } = useRequest("meus-pedidos", loadOrders);
+    const orders = data?.pedidos ?? [];
+
+    const handleViewOrder = (id: string) => {
+        navigate(`/user/pedidos/${id}`);
     };
 
   return (
@@ -100,10 +40,35 @@ export function MyOrders() {
           </p>
         </section>
 
+        {createdCount !== undefined && createdCount > 0 && (
+          <div
+            role="status"
+            className="mb-6 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
+          >
+            {createdCount === 1
+              ? "Pedido enviado para a loja."
+              : `${createdCount} pedidos enviados, um para cada loja.`}
+          </div>
+        )}
+
+        {(loading || error) && (
+          <RequestStatus
+            loading={loading}
+            error={error}
+            onRetry={reload}
+            loadingText="Carregando pedidos..."
+          />
+        )}
+
         {/* Lista de pedidos */}
         <section className="space-y-4">
           {orders.map((order) => {
-            const status = statusConfig[order.status];
+            const status = orderStatusConfig[order.status] ?? orderStatusConfig.pendente;
+            const storeName = data?.storeNames.get(order.loja_id) ?? "Loja";
+            const units = order.itens_pedido.reduce(
+              (total, item) => total + item.quantidade,
+              0
+            );
 
             return (
               <Card
@@ -126,11 +91,11 @@ export function MyOrders() {
                 >
                   <div>
                     <h2 className="font-semibold text-text">
-                      Pedido {order.id} - {order.storeName}
+                      Pedido {shortOrderId(order.id)} - {storeName}
                     </h2>
 
                     <p className="mt-1 text-sm text-text-secondary">
-                      Realizado em {order.date}
+                      Realizado em {formatDate(order.created_at)}
                     </p>
                   </div>
 
@@ -158,8 +123,8 @@ export function MyOrders() {
                       </p>
 
                       <p className="mt-1 text-sm font-medium text-text">
-                        {order.items}{" "}
-                        {order.items === 1
+                        {units}{" "}
+                        {units === 1
                           ? "item"
                           : "itens"}
                       </p>
@@ -172,7 +137,7 @@ export function MyOrders() {
 
                       <div className="mt-1">
                         <Price
-                          value={order.total}
+                          value={toNumber(order.total)}
                           size="sm"
                         />
                       </div>
@@ -181,7 +146,7 @@ export function MyOrders() {
 
                   <Button
                     variant="outline"
-                    onClick={() => handleViewOrder(order)}
+                    onClick={() => handleViewOrder(order.id)}
                   >
                     Ver pedido
                   </Button>
@@ -192,7 +157,7 @@ export function MyOrders() {
         </section>
 
         {/* Estado vazio */}
-        {orders.length === 0 && (
+        {data && orders.length === 0 && (
           <Card className="p-10">
             <div className="text-center">
               <h2 className="text-lg font-semibold text-text">
@@ -202,6 +167,14 @@ export function MyOrders() {
               <p className="mt-2 text-sm text-text-secondary">
                 Seus pedidos aparecerão aqui após realizar uma compra.
               </p>
+
+              <Button
+                className="mt-6"
+                variant="outline"
+                onClick={() => navigate("/user/home")}
+              >
+                Ver lojas
+              </Button>
             </div>
           </Card>
         )}
