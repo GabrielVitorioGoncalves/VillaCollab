@@ -1,5 +1,8 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/layout/userLayout";
+import { RequireAuth } from "./components/routing/requireAuth";
+import { SessionWatcher } from "./components/routing/sessionWatcher";
+import { CartProvider } from "./contexts/CartProvider";
 
 import { Auth } from "./pages/auth";
 
@@ -15,24 +18,34 @@ import { OrderDetail } from "./pages/users/orderDetail";
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Autenticação */}
-        <Route path="/" element={<Auth />} />
+    <CartProvider>
+      <BrowserRouter>
+        <SessionWatcher />
+        <Routes>
+          {/* Autenticação */}
+          <Route path="/" element={<Auth />} />
 
-        {/*Layout de usuário */}
-        <Route element={<Layout />}>
-          <Route path="user/home" element={<Home />} />
-          <Route path="user/paginaLoja/:id" element={<StorePage />} />
-          <Route path="user/detalhesProduto/:id" element={<ProductDetail />} />
-          <Route path="user/carrinho" element={<CartPage />} />
-          <Route path="user/pagamento" element={<PaymentPage />} />
-          <Route path="user/perfil" element={<ProfilePage />} />
-          <Route path="user/pedidos" element={<MyOrders />} />
-          <Route path="user/pedidos/:id" element={<OrderDetail />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+          {/*Layout de usuário */}
+          <Route element={<Layout />}>
+            {/* Vitrine e carrinho: abertos, a API de lojas/produtos é pública */}
+            <Route path="user/home" element={<Home />} />
+            <Route path="user/paginaLoja/:id" element={<StorePage />} />
+            <Route path="user/detalhesProduto/:id" element={<ProductDetail />} />
+            <Route path="user/carrinho" element={<CartPage />} />
+
+            {/* Precisam de login */}
+            <Route element={<RequireAuth />}>
+              <Route path="user/pagamento" element={<PaymentPage />} />
+              <Route path="user/perfil" element={<ProfilePage />} />
+              <Route path="user/pedidos" element={<MyOrders />} />
+              <Route path="user/pedidos/:id" element={<OrderDetail />} />
+            </Route>
+          </Route>
+
+          <Route path="*" element={<Navigate to="/user/home" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </CartProvider>
   );
 }
 

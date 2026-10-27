@@ -5,6 +5,7 @@ import authRoutes from './authRoutes';
 import lojaRoutes from './lojaRoutes';
 import pedidoRoutes from './pedidoRoutes';
 import usuarioRoutes from './usuarioRoutes';
+import carrinhoRoutes from './carrinhoRoutes';
 
 const routes = Router();
 
@@ -14,5 +15,6 @@ routes.use('/lojas', lojaRoutes);
 routes.use('/produtos', produtoRoutes);
 routes.use('/pedidos', pedidoRoutes);
 routes.use('/usuarios', usuarioRoutes);
+routes.use('/carrinho', carrinhoRoutes);
 
 export default routes;

@@ -5,6 +5,7 @@ declare global {
   namespace Express {
     interface Request {
       userId?: string;
+      userEmail?: string;
       accessToken?: string;
     }
   }
@@ -24,6 +25,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   }
 
   req.userId = data.user.id;
+  req.userEmail = data.user.email ?? undefined;
   req.accessToken = token;
   next();
 }

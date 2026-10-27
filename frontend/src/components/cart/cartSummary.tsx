@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Price } from "../marketplace/price";
@@ -6,18 +8,18 @@ interface CartSummaryProps {
   subtotal: number;
   shipping?: number;
   onCheckout?: () => void;
+  checkoutDisabled?: boolean;
   checkoutLabel?: string;
-  disabled?: boolean;
-  showShipping?: boolean;
+  note?: ReactNode;
 }
 
 export function CartSummary({
   subtotal,
   shipping = 0,
   onCheckout,
+  checkoutDisabled = false,
   checkoutLabel = "Finalizar compra",
-  disabled = false,
-  showShipping = true,
+  note,
 }: CartSummaryProps) {
   const total = subtotal + shipping;
 
@@ -28,15 +30,15 @@ export function CartSummary({
       </h2>
 
       <div className="mt-5 space-y-3">
-        {showShipping && <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between">
           <span className="text-sm text-text-secondary">
             Subtotal
           </span>
 
           <Price value={subtotal} />
-        </div>}
+        </div>
 
-        {showShipping && <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between">
           <span className="text-sm text-text-secondary">
             Frete
           </span>
@@ -48,7 +50,7 @@ export function CartSummary({
           ) : (
             <Price value={shipping} />
           )}
-        </div>}
+        </div>
 
         <div className="border-t border-border pt-3">
           <div className="flex items-center justify-between">
@@ -66,10 +68,16 @@ export function CartSummary({
         <Button
           className="mt-3 w-full"
           onClick={onCheckout}
-          disabled={disabled}
+          disabled={checkoutDisabled}
         >
           {checkoutLabel}
         </Button>
+
+        {note && (
+          <p className="text-center text-xs text-text-secondary">
+            {note}
+          </p>
+        )}
       </div>
     </Card>
   );

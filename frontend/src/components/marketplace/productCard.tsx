@@ -46,7 +46,6 @@ export function ProductCard({
       <button
         type="button"
         onClick={() => onView?.(product)}
-        aria-label={`Ver detalhes de ${name}`}
         className="relative block w-full cursor-pointer"
       >
         <div className="aspect-square overflow-hidden bg-background">
