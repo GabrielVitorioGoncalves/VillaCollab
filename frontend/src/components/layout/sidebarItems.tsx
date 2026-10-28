@@ -6,6 +6,7 @@ import {
   Store,
   ShoppingBag,
   SlidersHorizontal,
+  Users,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -13,7 +14,27 @@ export interface SidebarItem {
   label: string;
   href: string;
   icon: ReactNode;
+  end?: boolean;
 }
+
+export const adminSidebarItems: SidebarItem[] = [
+  {
+    label: "Dashboard global",
+    href: "/admin",
+    icon: <LayoutDashboard size={19} />,
+    end: true,
+  },
+  {
+    label: "Gestão de lojas",
+    href: "/admin/lojas",
+    icon: <Store size={19} />,
+  },
+  {
+    label: "Gestão de usuários",
+    href: "/admin/usuarios",
+    icon: <Users size={19} />,
+  },
+];
 
 export const storeSidebarItems: SidebarItem[] = [
   {

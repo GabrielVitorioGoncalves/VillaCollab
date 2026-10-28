@@ -15,6 +15,7 @@ import type { SidebarItem } from "./sidebarItems";
 
 interface SidebarProps {
   items?: SidebarItem[];
+  label?: string;
   collapsed?: boolean;
   onCollapseChange?: (collapsed: boolean) => void;
 }
@@ -54,6 +55,7 @@ const defaultItems: SidebarItem[] = [
 
 export function Sidebar({
   items = defaultItems,
+  label = "Área do vendedor",
   collapsed: controlledCollapsed,
   onCollapseChange,
 }: SidebarProps) {
@@ -98,7 +100,7 @@ export function Sidebar({
       {!collapsed && (
         <div className="px-5 pb-2 pt-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
-            Área do vendedor
+            {label}
           </p>
         </div>
       )}
@@ -108,7 +110,7 @@ export function Sidebar({
           <NavLink
             key={item.href}
             to={item.href}
-            end={item.href === "/store/dashboard"}
+            end={item.end ?? item.href === "/store/dashboard"}
             title={collapsed ? item.label : undefined}
             className={({ isActive }) => `
               flex items-center gap-3 rounded-md px-3 py-2.5
