@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/layout/userLayout";
 import { StoreLayout } from "./components/layout/storeLayout";
+import { AdminLayout } from "./components/layout/adminLayout";
 import { RequireAuth } from "./components/routing/requireAuth";
 import { SessionWatcher } from "./components/routing/sessionWatcher";
 import { CartProvider } from "./contexts/CartProvider";
@@ -26,6 +27,13 @@ import { OrderDetailPage } from "./pages/store/storeOrderDetail";
 import { StoreProfile } from "./pages/store/storeProfile";
 import { StoreSettings } from "./pages/store/storeSettings";
 import { StoreCatalogSettings } from "./pages/store/storeCatalogSettings"
+
+//admin
+import { AdminDashboardPage } from "./pages/admin/adminDashboard";
+import { AdminStoresPage } from "./pages/admin/adminStores";
+import { AdminStoreFormPage } from "./pages/admin/adminStoreForm";
+import { AdminUsersPage } from "./pages/admin/adminUsers";
+import { AdminAccountFormPage } from "./pages/admin/adminAccountForm";
 
 function App() {
   return (
@@ -64,6 +72,15 @@ function App() {
             <Route path="/store/minha-loja" element={<StoreProfile />} />
             <Route path="/store/configuracoes" element={<StoreSettings />} />
             <Route path="/store/catalogo" element={<StoreCatalogSettings />} />
+          </Route>
+
+          <Route element={<AdminLayout />}>
+            <Route path="/admin" element={<AdminDashboardPage />} />
+            <Route path="/admin/lojas" element={<AdminStoresPage />} />
+            <Route path="/admin/lojas/nova" element={<AdminStoreFormPage />} />
+            <Route path="/admin/lojas/:id/editar" element={<AdminStoreFormPage />} />
+            <Route path="/admin/usuarios" element={<AdminUsersPage />} />
+            <Route path="/admin/administradores/novo" element={<AdminAccountFormPage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/user/home" replace />} />

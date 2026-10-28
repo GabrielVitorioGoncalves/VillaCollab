@@ -1,10 +1,8 @@
-import { randomUUID } from 'node:crypto';
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { createSupabaseClient } from '../config/supabase';
+import { enviarImagemDaLoja } from '../services/ImagemLojaService';
 
-const BUCKET = 'lojas';
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const idParams = z.object({ id: z.uuid() });
 const imageQuery = z.object({ tipo: z.enum(['produto', 'logo', 'banner']) });
 
@@ -37,19 +35,6 @@ async function clientesDaLoja(client: Client, lojaId: string) {
     map.set(cliente.usuario_id, { nome: cliente.nome, telefone: cliente.telefone, email: cliente.email });
   }
   return map;
-}
-
-function detectImage(buffer: Buffer): { ext: string; type: string } | null {
-  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
-    return { ext: 'png', type: 'image/png' };
-  }
-  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-    return { ext: 'jpg', type: 'image/jpeg' };
-  }
-  if (buffer.length >= 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') {
-    return { ext: 'webp', type: 'image/webp' };
-  }
-  return null;
 }
 
 export class MinhaLojaController {
@@ -115,24 +100,9 @@ export class MinhaLojaController {
     try {
       const { tipo } = imageQuery.parse(req.query);
       const ctx = await lojaDoUsuario(req, res); if (!ctx) return;
-      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
-        res.status(415).json({ erro: 'Envie uma imagem PNG, JPG ou WEBP' }); return;
-      }
-      if (req.body.length > MAX_IMAGE_BYTES) {
-        res.status(413).json({ erro: 'A imagem pode ter no máximo 5 MB' }); return;
-      }
-      const image = detectImage(req.body);
-      if (!image) { res.status(400).json({ erro: 'O arquivo não é uma imagem PNG, JPG ou WEBP válida' }); return; }
-
-      const path = `${ctx.lojaId}/${tipo}/${randomUUID()}.${image.ext}`;
-      const storage = ctx.client.storage.from(BUCKET);
-      const { error } = await storage.upload(path, req.body, { contentType: image.type, upsert: false });
-      if (error) {
-        console.error('Falha ao enviar imagem para o Storage');
-        res.status(502).json({ erro: 'Não foi possível salvar a imagem agora' });
-        return;
-      }
-      res.status(201).json({ url: storage.getPublicUrl(path).data.publicUrl });
+      const resultado = await enviarImagemDaLoja(ctx.client, ctx.lojaId, tipo, req.body);
+      if (!resultado.ok) { res.status(resultado.status).json({ erro: resultado.erro }); return; }
+      res.status(201).json({ url: resultado.url });
     } catch (error) { next(error); }
   }
 }

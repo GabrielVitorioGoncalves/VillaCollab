@@ -32,7 +32,8 @@ export function Auth({
   const location = useLocation();
   const locationState = (location.state ?? {}) as AuthLocationState;
   const requestedPath =
-    locationState.from?.startsWith("/user/") || locationState.from?.startsWith("/store/")
+    locationState.from?.startsWith("/user/") || locationState.from?.startsWith("/store/") ||
+    locationState.from === "/admin" || locationState.from?.startsWith("/admin/")
       ? locationState.from
       : undefined;
 
@@ -73,7 +74,8 @@ export function Auth({
           email: email.trim(),
           usuario: result.usuario,
         });
-        const home = result.usuario.role === "lojista" ? "/store/dashboard" : "/user/home";
+        const home =
+          result.usuario.role === "lojista" ? "/store/dashboard" : result.usuario.role === "admin" ? "/admin" : "/user/home";
         navigate(requestedPath ?? home, { replace: true });
       }
     } catch (caught) {

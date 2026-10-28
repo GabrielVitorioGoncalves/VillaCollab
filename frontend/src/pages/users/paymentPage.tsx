@@ -62,7 +62,11 @@ export function PaymentPage() {
   const stores = useRequest("lojas-checkout", listStores);
   const storeIssues = groups.flatMap((group) => {
     const loja = stores.data?.find((item) => item.id === group.storeId);
-    if (!loja) return [];
+    if (!loja) {
+      return stores.data
+        ? [`A ${group.storeName} não está disponível no momento. Remova os produtos dela para continuar.`]
+        : [];
+    }
     if (loja.aceita_pedidos === false) {
       return [`A ${group.storeName} não está recebendo pedidos no momento. Remova os produtos dela para continuar.`];
     }

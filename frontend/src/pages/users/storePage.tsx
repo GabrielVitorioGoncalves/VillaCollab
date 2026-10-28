@@ -140,7 +140,7 @@ export function StorePage() {
         ...promotionOf(produto),
         storeName: data?.loja.nome ?? "",
         category: produto.categoria ?? undefined,
-        available: produto.estoque > 0 && data?.loja.aceita_pedidos !== false,
+        available: produto.estoque > 0 && data?.loja.aceita_pedidos !== false && data?.loja.ativa !== false,
         createdAt: produto.created_at,
         filterValues: produto.filtros ?? {},
       })),
@@ -356,7 +356,7 @@ export function StorePage() {
       return;
     }
 
-    if (data.loja.aceita_pedidos === false) return;
+    if (data.loja.aceita_pedidos === false || data.loja.ativa === false) return;
 
     addItem(produto, data.loja.nome, 1);
   }
@@ -461,7 +461,14 @@ return (
               </p>
             )}
 
-            {data?.loja.aceita_pedidos === false && (
+            {data?.loja.ativa === false ? (
+              <p
+                role="status"
+                className="mt-3 inline-block rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-800"
+              >
+                Esta loja está fora do marketplace no momento e não recebe pedidos.
+              </p>
+            ) : data?.loja.aceita_pedidos === false && (
               <p
                 role="status"
                 className="mt-3 inline-block rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-800"
