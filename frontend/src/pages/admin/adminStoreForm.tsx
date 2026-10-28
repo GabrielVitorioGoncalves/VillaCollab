@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useState, type ChangeEvent, type DragEvent, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ImagePlus } from "lucide-react";
+import { ImagePlus, X } from "lucide-react";
 
 import { PageHeader } from "../../components/layout/pageHeader";
 import { Button } from "../../components/ui/button";
@@ -9,9 +9,17 @@ import { FormField } from "../../components/ui/formField";
 import { Input } from "../../components/ui/input";
 import { RequestStatus } from "../../components/ui/requestStatus";
 import { useRequest } from "../../hooks/useRequest";
-import { listAdminStores } from "../../lib/admin/adminService";
+import { ApiError, errorMessage } from "../../lib/api";
+import {
+  createAdminStore,
+  getAdminStore,
+  updateAdminStore,
+  uploadAdminStoreImage,
+} from "../../lib/admin/adminService";
 import { storeCategories } from "../../lib/categories";
-import type { AdminStore } from "../../types/admin";
+import { formatCnpj, isValidCnpj, normalizeCnpj } from "../../lib/cnpj";
+import { isUuid } from "../../lib/format";
+import type { AdminStore, AdminStoreUpdate } from "../../types/admin";
 
 interface StoreFormState {
   nome: string;
@@ -20,46 +28,51 @@ interface StoreFormState {
   cnpj: string;
   telefone: string;
   categoria: string;
-  logo: string;
+  ativa: boolean;
 }
 
 type FormErrors = Partial<Record<keyof StoreFormState, string>>;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 function emptyForm(): StoreFormState {
-  return { nome: "", email: "", senha: "", cnpj: "", telefone: "", categoria: "", logo: "" };
+  return { nome: "", email: "", senha: "", cnpj: "", telefone: "", categoria: "", ativa: true };
 }
 
 function fromStore(store: AdminStore): StoreFormState {
   return {
     nome: store.nome,
-    email: store.responsavel,
+    email: store.responsavel_email ?? "",
     senha: "",
-    cnpj: store.cnpj,
-    telefone: store.telefone,
-    categoria: store.categoria,
-    logo: "",
+    cnpj: formatCnpj(store.cnpj),
+    telefone: store.telefone ?? "",
+    categoria: store.categoria ?? "",
+    ativa: store.ativa,
   };
 }
 
-function validate(form: StoreFormState, isEdit: boolean): FormErrors {
+function validate(form: StoreFormState, isEdit: boolean, requireEmail: boolean): FormErrors {
   const errors: FormErrors = {};
 
-  if (!form.nome.trim()) errors.nome = "Informe o nome da loja.";
+  if (form.nome.trim().length < 2) errors.nome = "Informe o nome da loja.";
 
-  if (!form.email.trim()) errors.email = "Informe o e-mail.";
-  else if (!EMAIL_PATTERN.test(form.email.trim())) errors.email = "Informe um e-mail válido.";
+  if (!form.email.trim()) {
+    if (requireEmail) errors.email = "Informe o e-mail.";
+  } else if (!EMAIL_PATTERN.test(form.email.trim())) errors.email = "Informe um e-mail válido.";
 
   if (!isEdit) {
     if (!form.senha) errors.senha = "Defina uma senha.";
     else if (form.senha.length < 8) errors.senha = "A senha deve ter pelo menos 8 caracteres.";
   }
 
-  if (form.cnpj.replace(/\D/g, "").length !== 14) errors.cnpj = "O CNPJ deve ter 14 dígitos.";
+  if (!isValidCnpj(form.cnpj)) errors.cnpj = "Informe um CNPJ válido.";
 
   const telefoneDigits = form.telefone.replace(/\D/g, "").length;
-  if (telefoneDigits < 10 || telefoneDigits > 11) errors.telefone = "Informe um telefone com DDD.";
+  if (telefoneDigits < 10 || telefoneDigits > 11 || !/^[0-9()+\-\s]+$/.test(form.telefone.trim())) {
+    errors.telefone = "Informe um telefone com DDD.";
+  }
 
   if (!form.categoria) errors.categoria = "Escolha uma categoria.";
 
@@ -71,19 +84,16 @@ export function AdminStoreFormPage() {
   const { id } = useParams();
   const isEdit = id !== undefined;
 
-  const request = useRequest(isEdit ? "admin-lojas" : null, listAdminStores);
-  const store = request.data?.find((item) => item.id === id);
+  const request = useRequest(isEdit ? `admin-loja:${id}` : null, () =>
+    isUuid(id) ? getAdminStore(id) : Promise.reject(new ApiError("Loja não encontrada", 404))
+  );
+  const store = request.data;
 
-  if (isEdit && !request.data) {
+  if (isEdit && request.loading) {
     return (
       <div className="space-y-6">
         <PageHeader title="Editar loja" />
-        <RequestStatus
-          loading={request.loading}
-          error={request.error}
-          onRetry={request.reload}
-          loadingText="Carregando loja..."
-        />
+        <RequestStatus loading loadingText="Carregando loja..." />
       </div>
     );
   }
@@ -93,7 +103,7 @@ export function AdminStoreFormPage() {
       <div className="space-y-6">
         <PageHeader title="Editar loja" />
         <Card className="p-6">
-          <p className="text-sm text-text-secondary">Loja não encontrada.</p>
+          <p className="text-sm text-text-secondary">{request.error ?? "Loja não encontrada."}</p>
           <Button variant="outline" className="mt-4" onClick={() => navigate("/admin/lojas")}>
             Voltar para as lojas
           </Button>
@@ -105,8 +115,7 @@ export function AdminStoreFormPage() {
   return (
     <AdminStoreForm
       key={store?.id ?? "nova"}
-      initialForm={store ? fromStore(store) : emptyForm()}
-      isEdit={isEdit}
+      store={store}
       onCancel={() => navigate("/admin/lojas")}
       onSubmitted={(notice) => navigate("/admin/lojas", { state: { notice } })}
     />
@@ -114,33 +123,119 @@ export function AdminStoreFormPage() {
 }
 
 interface AdminStoreFormProps {
-  initialForm: StoreFormState;
-  isEdit: boolean;
+  store?: AdminStore;
   onCancel: () => void;
   onSubmitted: (notice: string) => void;
 }
 
-function AdminStoreForm({ initialForm, isEdit, onCancel, onSubmitted }: AdminStoreFormProps) {
+function AdminStoreForm({ store, onCancel, onSubmitted }: AdminStoreFormProps) {
+  const isEdit = Boolean(store);
+  const initialForm = store ? fromStore(store) : emptyForm();
   const [form, setForm] = useState<StoreFormState>(initialForm);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [logoUrl, setLogoUrl] = useState<string | null>(store?.logo_url ?? null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   function updateField<K extends keyof StoreFormState>(field: K, value: StoreFormState[K]) {
     setForm((current) => ({ ...current, [field]: value }));
+    setError("");
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function handleLogo(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) pickLogo(file);
+  }
 
-    const nextErrors = validate(form, isEdit);
+  function handleDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0];
+    if (file) pickLogo(file);
+  }
+
+  function pickLogo(file: File) {
+    if (!IMAGE_TYPES.includes(file.type)) {
+      setError("Use uma imagem PNG, JPG ou WEBP.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setError("A logo pode ter no máximo 5 MB.");
+      return;
+    }
+    if (logoPreview) URL.revokeObjectURL(logoPreview);
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+    setError("");
+  }
+
+  function removeLogo() {
+    if (logoPreview) URL.revokeObjectURL(logoPreview);
+    setLogoFile(null);
+    setLogoPreview(null);
+    setLogoUrl(null);
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (saving) return;
+
+    const nextErrors = validate(form, isEdit, !isEdit || Boolean(store?.responsavel_email));
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
-    onSubmitted(
-      isEdit
-        ? "Alterações simuladas: nada foi salvo no servidor."
-        : "Cadastro simulado: a loja não foi salva no servidor."
-    );
+    setSaving(true);
+    setError("");
+    try {
+      if (!store) {
+        const created = await createAdminStore({
+          nome: form.nome.trim(),
+          email: form.email.trim(),
+          senha: form.senha,
+          cnpj: normalizeCnpj(form.cnpj),
+          telefone: form.telefone.trim(),
+          categoria: form.categoria,
+        });
+        if (logoFile) {
+          try {
+            const { url } = await uploadAdminStoreImage(created.id, logoFile, "logo");
+            await updateAdminStore(created.id, { logo_url: url });
+          } catch (caught) {
+            onSubmitted(`A loja "${created.nome}" foi cadastrada, mas a logo não foi salva (${errorMessage(caught)}). Envie de novo pela edição.`);
+            return;
+          }
+        }
+        onSubmitted(`A loja "${created.nome}" foi cadastrada. O lojista já pode entrar com ${form.email.trim().toLowerCase()}.`);
+        return;
+      }
+
+      const changes: AdminStoreUpdate = {};
+      if (form.nome.trim() !== initialForm.nome) changes.nome = form.nome.trim();
+      if (form.email.trim().toLowerCase() !== initialForm.email.toLowerCase() && form.email.trim()) {
+        changes.email = form.email.trim();
+      }
+      if (normalizeCnpj(form.cnpj) !== normalizeCnpj(initialForm.cnpj)) changes.cnpj = normalizeCnpj(form.cnpj);
+      if (form.telefone.trim() !== initialForm.telefone) changes.telefone = form.telefone.trim();
+      if (form.categoria !== initialForm.categoria) changes.categoria = form.categoria;
+      if (form.ativa !== initialForm.ativa) changes.ativa = form.ativa;
+      if (logoFile) {
+        changes.logo_url = (await uploadAdminStoreImage(store.id, logoFile, "logo")).url;
+      } else if (logoUrl !== (store.logo_url ?? null)) {
+        changes.logo_url = logoUrl;
+      }
+
+      if (Object.keys(changes).length > 0) await updateAdminStore(store.id, changes);
+      onSubmitted(`As alterações da loja "${form.nome.trim()}" foram salvas.`);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSaving(false);
+    }
   }
+
+  const shownLogo = logoPreview ?? logoUrl;
 
   return (
     <div className="space-y-6">
@@ -160,7 +255,18 @@ function AdminStoreForm({ initialForm, isEdit, onCancel, onSubmitted }: AdminSto
             />
           </FormField>
 
-          <FormField label="E-mail" required error={errors.email}>
+          <FormField
+            label={isEdit ? "E-mail do responsável" : "E-mail"}
+            required={!isEdit || Boolean(store?.responsavel_email)}
+            error={errors.email}
+            helperText={
+              isEdit
+                ? store?.responsavel_email
+                  ? "Trocar o e-mail muda o login do lojista responsável."
+                  : "Informe o e-mail de uma conta já cadastrada para vinculá-la como responsável."
+                : "Será o login do lojista responsável pela loja."
+            }
+          >
             <Input
               type="email"
               value={form.email}
@@ -188,6 +294,7 @@ function AdminStoreForm({ initialForm, isEdit, onCancel, onSubmitted }: AdminSto
                 value={form.cnpj}
                 onChange={(event) => updateField("cnpj", event.target.value)}
                 placeholder="00.000.000/0001-00"
+                maxLength={18}
                 error={!!errors.cnpj}
               />
             </FormField>
@@ -219,25 +326,67 @@ function AdminStoreForm({ initialForm, isEdit, onCancel, onSubmitted }: AdminSto
             </select>
           </FormField>
 
+          {isEdit && (
+            <FormField label="Status">
+              <select
+                value={form.ativa ? "ativo" : "inativo"}
+                onChange={(event) => updateField("ativa", event.target.value === "ativo")}
+                className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-text outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              >
+                <option value="ativo">Ativa (aparece no marketplace)</option>
+                <option value="inativo">Inativa (fora do marketplace, sem novos pedidos)</option>
+              </select>
+            </FormField>
+          )}
+
           <FormField label="Logo da loja">
-            <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-background px-4 py-6 text-center text-sm text-text-secondary transition-colors hover:bg-background-secondary">
-              <ImagePlus size={24} />
-              <span>{form.logo || "Clique ou arraste sua logo aqui"}</span>
-              <span className="text-xs">PNG, JPG ou WEBP</span>
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                onChange={(event) => updateField("logo", event.target.files?.[0]?.name ?? "")}
-              />
-            </label>
+            {shownLogo ? (
+              <div className="flex items-center gap-4 rounded-lg border border-border bg-background px-4 py-4">
+                <img src={shownLogo} alt="Logo da loja" className="h-16 w-16 rounded-lg object-cover" />
+                <span className="min-w-0 flex-1 truncate text-sm text-text-secondary">
+                  {logoFile?.name ?? "Logo atual"}
+                </span>
+                <button
+                  type="button"
+                  onClick={removeLogo}
+                  aria-label="Remover logo"
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-background-secondary hover:text-text"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <label
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={handleDrop}
+                className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-background px-4 py-6 text-center text-sm text-text-secondary transition-colors hover:bg-background-secondary"
+              >
+                <ImagePlus size={24} />
+                <span>Clique ou arraste sua logo aqui</span>
+                <span className="text-xs">PNG, JPG ou WEBP, até 5 MB</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={handleLogo}
+                />
+              </label>
+            )}
           </FormField>
 
+          {error && (
+            <p role="alert" className="text-sm text-danger">
+              {error}
+            </p>
+          )}
+
           <div className="flex flex-col-reverse gap-3 border-t border-border pt-5 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" onClick={onCancel}>
+            <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
               Cancelar
             </Button>
-            <Button type="submit">{isEdit ? "Salvar alterações" : "Cadastrar loja"}</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Salvando..." : isEdit ? "Salvar alterações" : "Cadastrar loja"}
+            </Button>
           </div>
         </form>
       </Card>

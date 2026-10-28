@@ -7,6 +7,7 @@ import pedidoRoutes from './pedidoRoutes';
 import usuarioRoutes from './usuarioRoutes';
 import carrinhoRoutes from './carrinhoRoutes';
 import minhaLojaRoutes from './minhaLojaRoutes';
+import adminRoutes from './adminRoutes';
 
 const routes = Router();
 
@@ -18,5 +19,6 @@ routes.use('/pedidos', pedidoRoutes);
 routes.use('/usuarios', usuarioRoutes);
 routes.use('/carrinho', carrinhoRoutes);
 routes.use('/minha-loja', minhaLojaRoutes);
+routes.use('/admin', adminRoutes);
 
 export default routes;

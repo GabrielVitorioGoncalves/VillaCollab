@@ -1,31 +1,63 @@
-import type { AdminDashboard, AdminStore, AdminUser } from "../../types/admin";
-import { mockAdminDashboard, mockAdminStores, mockAdminUsers } from "./adminMocks";
+import { apiRequest } from "../api";
+import type {
+  AdminAccountInput,
+  AdminDashboard,
+  AdminMe,
+  AdminRoleInput,
+  AdminStore,
+  AdminStoreInput,
+  AdminStoreUpdate,
+  AdminUser,
+} from "../../types/admin";
 
-/*
-Camada de dados do Admin, ainda simulada.
+export function getAdminMe() {
+  return apiRequest<AdminMe>("/admin/me", { auth: true });
+}
 
-Não há endpoints de Admin no back-end. Estas funções devolvem cópias dos mocks
-com um atraso artificial, para que as telas já tratem carregamento e erro.
-Quando a API existir, troque o corpo de cada função por `apiRequest` (lib/api.ts),
-por exemplo: `apiRequest<AdminStore[]>("/admin/lojas", { auth: true })`.
-*/
+export function getAdminDashboard() {
+  return apiRequest<AdminDashboard>("/admin/painel", { auth: true });
+}
 
-const SIMULATED_DELAY_MS = 400;
+export function listAdminStores() {
+  return apiRequest<AdminStore[]>("/admin/lojas", { auth: true });
+}
 
-function simulate<T>(data: T): Promise<T> {
-  return new Promise((resolve) => {
-    window.setTimeout(() => resolve(structuredClone(data)), SIMULATED_DELAY_MS);
+export function getAdminStore(id: string) {
+  return apiRequest<AdminStore>(`/admin/lojas/${encodeURIComponent(id)}`, { auth: true });
+}
+
+export function createAdminStore(data: AdminStoreInput) {
+  return apiRequest<AdminStore>("/admin/lojas", { method: "POST", auth: true, body: data });
+}
+
+export function updateAdminStore(id: string, data: AdminStoreUpdate) {
+  return apiRequest<AdminStore>(`/admin/lojas/${encodeURIComponent(id)}`, { method: "PATCH", auth: true, body: data });
+}
+
+export function deleteAdminStore(id: string) {
+  return apiRequest<void>(`/admin/lojas/${encodeURIComponent(id)}`, { method: "DELETE", auth: true });
+}
+
+export function uploadAdminStoreImage(id: string, file: File, tipo: "logo" | "banner") {
+  return apiRequest<{ url: string }>(`/admin/lojas/${encodeURIComponent(id)}/imagens?tipo=${tipo}`, {
+    method: "POST",
+    auth: true,
+    file,
   });
 }
 
-export function getAdminDashboard(): Promise<AdminDashboard> {
-  return simulate(mockAdminDashboard);
+export function listAdminUsers() {
+  return apiRequest<AdminUser[]>("/admin/usuarios", { auth: true });
 }
 
-export function listAdminStores(): Promise<AdminStore[]> {
-  return simulate(mockAdminStores);
+export function updateAdminUserRole(id: string, data: AdminRoleInput) {
+  return apiRequest<AdminUser>(`/admin/usuarios/${encodeURIComponent(id)}`, { method: "PATCH", auth: true, body: data });
 }
 
-export function listAdminUsers(): Promise<AdminUser[]> {
-  return simulate(mockAdminUsers);
+export function deleteAdminUser(id: string) {
+  return apiRequest<void>(`/admin/usuarios/${encodeURIComponent(id)}`, { method: "DELETE", auth: true });
+}
+
+export function createAdminAccount(data: AdminAccountInput) {
+  return apiRequest<AdminUser>("/admin/administradores", { method: "POST", auth: true, body: data });
 }

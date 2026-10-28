@@ -63,6 +63,7 @@ export interface Loja {
   exibir_estoque?: boolean;
   prazo_preparo_dias?: number | null;
   pedido_minimo?: number | string;
+  ativa?: boolean;
 }
 
 export interface NotificacoesLoja {

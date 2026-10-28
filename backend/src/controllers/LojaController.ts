@@ -24,7 +24,7 @@ const fields = z.object({
   }).strict().optional()
 });
 const columns = 'id, nome, slug, descricao, categoria, logo_url, banner_url, filtros, nota_media, total_avaliacoes, '
-  + 'email_contato, telefone, aceita_pedidos, exibir_estoque, prazo_preparo_dias, pedido_minimo, created_at';
+  + 'email_contato, telefone, aceita_pedidos, exibir_estoque, prazo_preparo_dias, pedido_minimo, ativa, created_at';
 const createSchema = fields.strict();
 const updateSchema = fields.partial().strict().refine(
   value => Object.keys(value).length > 0, 'Informe pelo menos um campo'
@@ -43,7 +43,7 @@ export class LojaController {
       const { data, error } = await supabase.from('lojas')
         .select(`${columns}, produtos(count)`).order('nome');
       if (error) throw error;
-      res.json((data ?? []).map(({ produtos, ...loja }: { produtos?: { count: number }[] } & Record<string, unknown>) => ({
+      res.json((data ?? []).filter((loja: { ativa?: boolean }) => loja.ativa !== false).map(({ produtos, ...loja }: { produtos?: { count: number }[] } & Record<string, unknown>) => ({
         ...loja,
         total_produtos: produtos?.[0]?.count ?? 0
       })));

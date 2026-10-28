@@ -4,6 +4,7 @@ import {
   LogOut,
   ShoppingCart,
   Store,
+  ShieldCheck,
   User,
 } from "lucide-react";
 
@@ -18,7 +19,9 @@ const SCROLL_THRESHOLD = 20;
 
 export function Header() {
   const userName = getUserName();
-  const isSeller = getSession()?.usuario?.role === "lojista";
+  const role = getSession()?.usuario?.role;
+  const isSeller = role === "lojista";
+  const isAdmin = role === "admin";
   const { count: cartCount, flush: flushCart } = useCart();
   const [searchParams] = useSearchParams();
   const [visible, setVisible] = useState(true);
@@ -335,6 +338,33 @@ export function Header() {
                     <Store size={18} />
 
                     <span>Painel da loja</span>
+                  </button>
+                  )}
+
+                  {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      navigate("/admin");
+                    }}
+                    className="
+                      flex
+                      w-full
+                      items-center
+                      gap-3
+                      rounded-lg
+                      px-3
+                      py-2.5
+                      text-sm
+                      text-text
+                      transition-colors
+                      hover:bg-background-secondary
+                    "
+                  >
+                    <ShieldCheck size={18} />
+
+                    <span>Painel administrativo</span>
                   </button>
                   )}
 

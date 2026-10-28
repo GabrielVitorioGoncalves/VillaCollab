@@ -77,7 +77,7 @@ export function ProductDetail() {
     price: toNumber(produto.preco),
     oldPrice: promotionOf(produto).oldPrice,
     storeName: loja.nome,
-    available: produto.estoque > 0 && produto.ativo !== false && loja.aceita_pedidos !== false,
+    available: produto.estoque > 0 && produto.ativo !== false && loja.aceita_pedidos !== false && loja.ativa !== false,
     description: produto.descricao ?? undefined,
     rating: ratingOf(produto)?.rating,
     reviewCount: ratingOf(produto)?.reviewCount,
@@ -231,7 +231,7 @@ export function ProductDetail() {
                 </p>
               )}
 
-              {produto.ativo !== false && loja.aceita_pedidos === false && (
+              {produto.ativo !== false && (loja.aceita_pedidos === false || loja.ativa === false) && (
                 <p className="text-center text-xs text-text-secondary">
                   A loja não está recebendo pedidos no momento.
                 </p>

@@ -128,7 +128,16 @@ export function Dashboard() {
         }
       />
 
-      {loja.aceita_pedidos === false && (
+      {loja.ativa === false && (
+        <Card className="border-red-200 bg-red-50 p-4">
+          <p className="text-sm text-red-700">
+            Sua loja foi desativada pela administração da plataforma: ela não aparece no marketplace e não recebe
+            pedidos. Fale com o suporte para reativá-la.
+          </p>
+        </Card>
+      )}
+
+      {loja.ativa !== false && loja.aceita_pedidos === false && (
         <Card className="border-red-200 bg-red-50 p-4">
           <p className="text-sm text-red-700">
             Sua loja não está recebendo pedidos. Os clientes veem os produtos, mas não conseguem finalizar a compra.{" "}
