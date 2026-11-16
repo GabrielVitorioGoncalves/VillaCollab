@@ -13,7 +13,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { SearchBar } from "../search/searchBar";
 import { useCart } from "../../contexts/cartContext";
-import { clearSession, getSession, getUserName } from "../../lib/session";
+import { logout } from "../../lib/services";
+import { getSession, getUserName } from "../../lib/session";
 
 const SCROLL_THRESHOLD = 20;
 
@@ -110,7 +111,7 @@ export function Header() {
   const handleLogout = async () => {
     setUserMenuOpen(false);
     await flushCart();
-    clearSession();
+    await logout();
     navigate("/");
   };
 

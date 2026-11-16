@@ -1,6 +1,7 @@
 import express, { Router } from 'express';
 import { AdminController } from '../controllers/AdminController';
 import { authMiddleware } from '../middlewares/authMiddleware';
+import { limiteEnvioImagem } from '../middlewares/rateLimit';
 
 const router = Router();
 const controller = new AdminController();
@@ -12,7 +13,7 @@ router.post('/lojas', controller.criarLoja);
 router.get('/lojas/:id', controller.loja);
 router.patch('/lojas/:id', controller.atualizarLoja);
 router.delete('/lojas/:id', controller.excluirLoja);
-router.post('/lojas/:id/imagens',
+router.post('/lojas/:id/imagens', limiteEnvioImagem,
   express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: '6mb' }),
   controller.enviarImagemLoja);
 router.get('/usuarios', controller.usuarios);

@@ -1,4 +1,5 @@
 import { apiRequest } from "./api";
+import { clearSession } from "./session";
 import type {
   Atributo,
   CarrinhoItem,
@@ -45,12 +46,17 @@ export function updateMe(data: ProfileUpdate) {
   return apiRequest<Usuario>("/auth/me", { method: "PATCH", auth: true, body: data });
 }
 
-export function changeEmail(email: string) {
+export function changeEmail(email: string, senhaAtual: string) {
   return apiRequest<{ confirmacao_email_pendente: boolean }>("/auth/email", {
     method: "PATCH",
     auth: true,
-    body: { email },
+    body: { email, senha_atual: senhaAtual },
   });
+}
+
+export async function logout() {
+  await apiRequest<void>("/auth/logout", { method: "POST", auth: true }).catch(() => undefined);
+  clearSession();
 }
 
 export function changePassword(senhaAtual: string, novaSenha: string) {

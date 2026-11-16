@@ -6,7 +6,8 @@ import { RequestStatus } from "../ui/requestStatus";
 import { useCart } from "../../contexts/cartContext";
 import { useRequest } from "../../hooks/useRequest";
 import { getAdminMe } from "../../lib/admin/adminService";
-import { clearSession, getSession } from "../../lib/session";
+import { logout } from "../../lib/services";
+import { getSession } from "../../lib/session";
 import type { PermissaoAdmin } from "../../types/admin";
 import { adminPagePermission, type AdminContextValue } from "./adminContext";
 import { Sidebar } from "./sideBar";
@@ -43,7 +44,7 @@ export function AdminLayout() {
 
   async function handleLogout() {
     await flushCart();
-    clearSession();
+    await logout();
     navigate("/", { replace: true });
   }
 

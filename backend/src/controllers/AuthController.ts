@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { supabase, createSupabaseClient, updateAuthUser } from '../config/supabase';
+import { createSupabaseClient, signOutSession, updateAuthUser } from '../config/supabase';
 import { rpcFailure } from '../errors/rpcFailure';
 import { enderecoSchema } from '../schemas/catalogoSchema';
 
@@ -9,7 +9,7 @@ const registerSchema = z.object({
   email: z.email(),
   password: z.string().min(8).max(128)
 }).strict();
-const loginSchema = z.object({ email: z.email(), password: z.string().min(1) }).strict();
+const loginSchema = z.object({ email: z.email(), password: z.string().min(1).max(128) }).strict();
 
 const profileSchema = z.object({
   nome: z.string().trim().min(2).max(255).optional(),
@@ -17,25 +17,33 @@ const profileSchema = z.object({
   endereco: enderecoSchema.nullable().optional()
 }).strict().refine(value => Object.keys(value).length > 0, 'Informe pelo menos um campo');
 
-const emailSchema = z.object({ email: z.email() }).strict();
+const emailSchema = z.object({ email: z.email(), senha_atual: z.string().min(1).max(128) }).strict();
 const passwordSchema = z.object({
-  senha_atual: z.string().min(1),
+  senha_atual: z.string().min(1).max(128),
   nova_senha: z.string().min(8).max(128)
 }).strict();
 
 const profileColumns = 'id, nome, role, loja_id, telefone, endereco';
 
+async function confirmPassword(email: string, password: string): Promise<boolean> {
+  const { data, error } = await createSupabaseClient().auth.signInWithPassword({ email, password });
+  if (error || !data.session) return false;
+  await signOutSession(data.session.access_token, 'local').catch(() => undefined);
+  return true;
+}
+
 export class AuthController {
   async register(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { nome, email, password } = registerSchema.parse(req.body);
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await createSupabaseClient().auth.signUp({
         email, password, options: { data: { nome } }
       });
       if (error || !data.user) {
         res.status(400).json({ erro: 'Não foi possível cadastrar o usuário' });
         return;
       }
+      if (data.session) await signOutSession(data.session.access_token, 'local').catch(() => undefined);
       // O trigger do banco cria o perfil cliente, mesmo quando confirmação de email está ativa.
       res.status(201).json({ id: data.user.id, confirmacao_email_pendente: !data.session });
     } catch (error) { next(error); }
@@ -44,7 +52,7 @@ export class AuthController {
   async login(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { email, password } = loginSchema.parse(req.body);
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await createSupabaseClient().auth.signInWithPassword({ email, password });
       if (error || !data.session || !data.user) {
         res.status(401).json({ erro: 'Credenciais inválidas' });
         return;
@@ -99,9 +107,13 @@ export class AuthController {
 
   async changeEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { email } = emailSchema.parse(req.body);
-      if (email.toLowerCase() === req.userEmail?.toLowerCase()) {
+      const { email, senha_atual } = emailSchema.parse(req.body);
+      if (!req.userEmail) { res.status(400).json({ erro: 'Conta sem e-mail' }); return; }
+      if (email.toLowerCase() === req.userEmail.toLowerCase()) {
         res.status(400).json({ erro: 'Este já é o seu e-mail' }); return;
+      }
+      if (!(await confirmPassword(req.userEmail, senha_atual))) {
+        res.status(400).json({ erro: 'Senha atual incorreta' }); return;
       }
       const result = await updateAuthUser(req.accessToken!, { email });
       if (!result.ok) {
@@ -115,14 +127,21 @@ export class AuthController {
     try {
       const { senha_atual, nova_senha } = passwordSchema.parse(req.body);
       if (!req.userEmail) { res.status(400).json({ erro: 'Conta sem e-mail' }); return; }
-      const { error: loginError } = await supabase.auth.signInWithPassword({
-        email: req.userEmail, password: senha_atual
-      });
-      if (loginError) { res.status(400).json({ erro: 'Senha atual incorreta' }); return; }
+      if (!(await confirmPassword(req.userEmail, senha_atual))) {
+        res.status(400).json({ erro: 'Senha atual incorreta' }); return;
+      }
       const result = await updateAuthUser(req.accessToken!, { password: nova_senha });
       if (!result.ok) {
         res.status(400).json({ erro: 'Não foi possível alterar a senha' }); return;
       }
+      await signOutSession(req.accessToken!, 'others').catch(() => undefined);
+      res.status(204).end();
+    } catch (error) { next(error); }
+  }
+
+  async logout(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      await signOutSession(req.accessToken!, 'local');
       res.status(204).end();
     } catch (error) { next(error); }
   }

@@ -9,7 +9,8 @@ on:
     branches:
       - main
       - dev
-
+permissions:
+  contents: read
 jobs:
   frontend:
     name: Frontend - Build e Lint
