@@ -18,7 +18,8 @@ import {
   shortOrderId,
   toNumber,
 } from "../../lib/format";
-import { cancelOrder, getOrder, getStore, rateProduct } from "../../lib/services";
+import { cancelOrder, getOrder, getOrderWhatsapp, getStore, rateProduct } from "../../lib/services";
+import { linkWhatsappSeguro } from "../../lib/whatsapp";
 import type { Loja, Pedido, PedidoStatus, Produto } from "../../types/api";
 
 interface OrderData {
@@ -53,6 +54,9 @@ export function OrderDetail() {
   const justCreated = !!(location.state as { createdCount?: number } | null)?.createdCount;
 
   const { data, loading, error, reload, mutate } = useRequest(`pedido:${id}`, () => loadOrder(id));
+  const awaitingWhatsapp = data?.pedido.status === "pendente" && data.pedido.forma_pagamento === "whatsapp";
+  const whatsapp = useRequest(awaitingWhatsapp ? `whatsapp:${id}` : null, () => getOrderWhatsapp(id));
+  const whatsappUrl = linkWhatsappSeguro(whatsapp.data?.url);
 
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -117,11 +121,13 @@ export function OrderDetail() {
   const canCancel = order.status === "pendente";
 
   const paymentLabel =
-    order.forma_pagamento === "pix"
-      ? "PIX"
-      : order.forma_pagamento === "cartao"
-        ? `Cartão de crédito${order.parcelas && order.parcelas > 1 ? ` em ${order.parcelas}x` : " à vista"}`
-        : "Não informada";
+    order.forma_pagamento === "whatsapp"
+      ? "Combinado com a loja pelo WhatsApp"
+      : order.forma_pagamento === "pix"
+        ? "PIX"
+        : order.forma_pagamento === "cartao"
+          ? `Cartão de crédito${order.parcelas && order.parcelas > 1 ? ` em ${order.parcelas}x` : " à vista"}`
+          : "Não informada";
 
   const reachedIndex = progressSteps.findIndex((step) => step.status === order.status);
 
@@ -158,13 +164,54 @@ export function OrderDetail() {
           ← Voltar para pedidos
         </button>
 
-        {justCreated && order.status === "pendente" && (
+        {justCreated && order.status === "pendente" && !awaitingWhatsapp && (
           <div
             role="status"
             className="mb-6 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
           >
             Pedido enviado para a loja. Você pode acompanhar o andamento por aqui.
           </div>
+        )}
+
+        {awaitingWhatsapp && (
+          <Card className="mb-6 border-green-200 bg-green-50 p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-semibold text-green-900">
+                  {justCreated ? "Pedido registrado. Falta combinar o pagamento" : "Combine o pagamento com a loja"}
+                </h2>
+                <p className="mt-1 text-sm text-green-800">
+                  Envie o pedido para a {storeName} no WhatsApp. A mensagem já vai com os itens e o total; a loja
+                  confirma o pedido aqui depois de receber o pagamento.
+                </p>
+                {whatsapp.error && (
+                  <p role="alert" className="mt-2 text-sm text-danger">
+                    {whatsapp.error}
+                  </p>
+                )}
+              </div>
+
+              {whatsappUrl ? (
+                <a
+                  href={whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex shrink-0 items-center justify-center rounded-md bg-[#1f8f4e] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#187540]"
+                >
+                  Enviar pedido no WhatsApp
+                </a>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="shrink-0"
+                  disabled={whatsapp.loading}
+                  onClick={whatsapp.reload}
+                >
+                  {whatsapp.loading ? "Preparando mensagem..." : "Tentar de novo"}
+                </Button>
+              )}
+            </div>
+          </Card>
         )}
 
         {/* Cabeçalho */}

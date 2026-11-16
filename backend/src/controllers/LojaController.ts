@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { supabase, createSupabaseClient } from '../config/supabase';
-import { filtrosLojaSchema, urlImagemSchema } from '../schemas/catalogoSchema';
+import { filtrosLojaSchema, urlImagemSchema, whatsappSchema } from '../schemas/catalogoSchema';
 import { rpcFailure } from '../errors/rpcFailure';
 
 const params = z.object({ id: z.uuid() });
@@ -14,7 +14,7 @@ const fields = z.object({
   banner_url: urlImagemSchema.nullable().optional(),
   filtros: filtrosLojaSchema.optional(),
   email_contato: z.email().max(255).nullable().optional(),
-  telefone: z.string().trim().max(20).regex(/^[0-9()+\-\s]*$/, 'Telefone inválido').nullable().optional(),
+  telefone: whatsappSchema,
   aceita_pedidos: z.boolean().optional(),
   exibir_estoque: z.boolean().optional(),
   confirmar_automaticamente: z.boolean().optional(),

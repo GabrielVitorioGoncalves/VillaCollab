@@ -53,6 +53,10 @@ export class AuthController {
     try {
       const { email, password } = loginSchema.parse(req.body);
       const { data, error } = await createSupabaseClient().auth.signInWithPassword({ email, password });
+      if (error?.code === 'email_not_confirmed') {
+        res.status(403).json({ erro: 'Confirme seu e-mail antes de entrar. O link foi enviado para a sua caixa de entrada.' });
+        return;
+      }
       if (error || !data.session || !data.user) {
         res.status(401).json({ erro: 'Credenciais inválidas' });
         return;

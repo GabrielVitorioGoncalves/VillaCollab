@@ -57,6 +57,7 @@ const statusToDb: Record<Exclude<OrderStatus, "Pendente">, Exclude<PedidoStatus,
 };
 
 function paymentLabel(pedido: PedidoLoja) {
+  if (pedido.forma_pagamento === "whatsapp") return "Combinado pelo WhatsApp";
   if (pedido.forma_pagamento === "pix") return "Pix";
   if (pedido.forma_pagamento === "cartao") {
     return `Cartão de crédito${pedido.parcelas && pedido.parcelas > 1 ? ` em ${pedido.parcelas}x` : " à vista"}`;
@@ -456,6 +457,12 @@ export function OrderDetailPage() {
             <p className="mt-1 text-sm font-medium text-text">
               {order.paymentMethod}
             </p>
+            {pedido.forma_pagamento === "whatsapp" && pedido.status === "pendente" && (
+              <p className="mt-2 text-xs text-text-secondary">
+                O cliente vai te chamar no WhatsApp da loja com este pedido. Confirme aqui só depois de
+                receber o pagamento.
+              </p>
+            )}
 
             <div className="mt-4 border-t border-border pt-4">
               <p className="text-sm text-text-secondary">
@@ -470,4 +477,4 @@ export function OrderDetailPage() {
       </div>
     </div>
   );
-}
+}

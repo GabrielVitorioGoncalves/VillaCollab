@@ -18,6 +18,7 @@ import { useRequest } from "../../hooks/useRequest";
 import { formatCurrency, formatShortDate, shortOrderId, toNumber } from "../../lib/format";
 import { listMyProducts, listStoreOrders } from "../../lib/services";
 import { storeStatusLabel, storeStatusStyle } from "../../lib/storeOrderStatus";
+import { telefoneWhatsappValido } from "../../lib/whatsapp";
 import type { PedidoLoja } from "../../types/api";
 
 const LOW_STOCK = 5;
@@ -133,6 +134,22 @@ export function Dashboard() {
           <p className="text-sm text-red-700">
             Sua loja foi desativada pela administração da plataforma: ela não aparece no marketplace e não recebe
             pedidos. Fale com o suporte para reativá-la.
+          </p>
+        </Card>
+      )}
+
+      {loja.ativa !== false && !telefoneWhatsappValido(loja.telefone) && (
+        <Card className="border-red-200 bg-red-50 p-4">
+          <p className="text-sm text-red-700">
+            Sua loja ainda não tem um WhatsApp válido cadastrado, e sem ele os clientes não conseguem finalizar a
+            compra.{" "}
+            <button
+              type="button"
+              onClick={() => navigate("/store/minha-loja")}
+              className="font-medium underline underline-offset-4"
+            >
+              Cadastrar o WhatsApp
+            </button>
           </p>
         </Card>
       )}

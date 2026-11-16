@@ -48,8 +48,8 @@ async function step(name, fn) {
   catch (error) { results.push(`FAIL ${name}: ${error.message.split('\n')[0]}`); }
 }
 
-const lojaA = sql(`insert into lojas (nome, slug, descricao) values ('Loja A ${run}', 'loja-a-${run}', 'Teste') returning id`);
-const lojaB = sql(`insert into lojas (nome, slug, descricao) values ('Loja B ${run}', 'loja-b-${run}', 'Teste') returning id`);
+const lojaA = sql(`insert into lojas (nome, slug, descricao, telefone) values ('Loja A ${run}', 'loja-a-${run}', 'Teste', '(47) 99999-0001') returning id`);
+const lojaB = sql(`insert into lojas (nome, slug, descricao, telefone) values ('Loja B ${run}', 'loja-b-${run}', 'Teste', '(47) 99999-0002') returning id`);
 const prodA = sql(`insert into produtos (loja_id, nome, preco, estoque) values ('${lojaA}', 'Produto A', 50, 10) returning id`);
 const prodB = sql(`insert into produtos (loja_id, nome, preco, estoque) values ('${lojaB}', 'Produto B', 80, 10) returning id`);
 const uLojistaA = await user('lojistaA');

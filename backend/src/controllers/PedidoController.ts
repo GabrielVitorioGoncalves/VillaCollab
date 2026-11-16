@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { createSupabaseClient } from '../config/supabase';
 import { rpcFailure } from '../errors/rpcFailure';
 import { codigoSchema, enderecoSchema } from '../schemas/catalogoSchema';
+import { linkWhatsapp, mensagemDoPedido, numeroWhatsapp, type PedidoParaWhatsapp } from '../services/whatsapp';
+
+type PedidoLido = PedidoParaWhatsapp & { usuario_id: string; loja_id: string; status: string };
 
 const idSchema = z.object({ id: z.uuid() });
 const lojaSchema = z.object({ loja_id: z.uuid() });
@@ -20,7 +23,7 @@ const createSchema = z.object({
     variacoes: z.record(codigoSchema, codigoSchema).optional()
   }).strict()).min(1).max(50),
   endereco_entrega: enderecoSchema.extend({ nome: z.string().trim().min(2).max(255) }).optional(),
-  forma_pagamento: z.enum(['pix', 'cartao']).optional(),
+  forma_pagamento: z.enum(['pix', 'cartao', 'whatsapp']).optional(),
   parcelas: z.number().int().min(1).max(12).optional()
 }).strict()
   .refine(value => new Set(value.itens.map(chaveItem)).size === value.itens.length,
@@ -88,6 +91,30 @@ export class PedidoController {
       if (error) throw error;
       if (!data) { res.status(404).json({ erro: 'Pedido não encontrado' }); return; }
       res.json(data);
+    } catch (error) { next(error); }
+  }
+
+  async whatsapp(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = idSchema.parse(req.params);
+      const client = createSupabaseClient(req.accessToken);
+      const { data, error } = await client.from('pedidos').select(select).eq('id', id).maybeSingle();
+      if (error) throw error;
+      const pedido = data as unknown as PedidoLido | null;
+      if (!pedido || pedido.usuario_id !== req.userId) { res.status(404).json({ erro: 'Pedido não encontrado' }); return; }
+      if (pedido.status === 'cancelado') { res.status(409).json({ erro: 'Este pedido foi cancelado' }); return; }
+      const { data: loja, error: lojaError } = await client.from('lojas')
+        .select('nome, telefone').eq('id', pedido.loja_id).maybeSingle();
+      if (lojaError) throw lojaError;
+      const numero = numeroWhatsapp(loja?.telefone);
+      if (!loja || !numero) {
+        res.status(409).json({ erro: 'Esta loja ainda não cadastrou o WhatsApp para receber pedidos' }); return;
+      }
+      const produtoIds = [...new Set(pedido.itens_pedido.map(item => item.produto_id))];
+      const { data: produtos, error: produtosError } = await client.from('produtos')
+        .select('id, nome, variacoes').in('id', produtoIds);
+      if (produtosError) throw produtosError;
+      res.json({ url: linkWhatsapp(numero, mensagemDoPedido(pedido, loja.nome, produtos ?? [])) });
     } catch (error) { next(error); }
   }
 

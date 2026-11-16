@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { urlImagemSchema } from './catalogoSchema';
+import { urlImagemSchema, whatsappSchema } from './catalogoSchema';
 
 export const PERMISSOES_ADMIN = ['lojas', 'produtos', 'usuarios', 'relatorios'] as const;
 export type PermissaoAdmin = typeof PERMISSOES_ADMIN[number];
@@ -39,13 +39,6 @@ export function cnpjValido(valor: string): boolean {
 
 const cnpjSchema = z.string().trim().refine(cnpjValido, 'CNPJ inválido').transform(normalizarCnpj);
 
-const telefoneSchema = z.string().trim().max(20)
-  .regex(/^[0-9()+\-\s]+$/, 'Telefone inválido')
-  .refine(valor => {
-    const digitos = valor.replace(/\D/g, '').length;
-    return digitos >= 10 && digitos <= 11;
-  }, 'Informe um telefone com DDD');
-
 const emailSchema = z.string().trim().toLowerCase().pipe(z.email('E-mail inválido').max(255));
 const senhaSchema = z.string().min(8, 'A senha deve ter pelo menos 8 caracteres').max(72);
 const nomeLojaSchema = z.string().trim().min(2, 'Informe o nome da loja').max(255);
@@ -55,7 +48,7 @@ export const criarLojaSchema = z.object({
   email: emailSchema,
   senha: senhaSchema,
   cnpj: cnpjSchema,
-  telefone: telefoneSchema,
+  telefone: whatsappSchema,
   categoria: z.enum(CATEGORIAS_LOJA)
 }).strict();
 
@@ -63,7 +56,7 @@ export const atualizarLojaSchema = z.object({
   nome: nomeLojaSchema.optional(),
   email: emailSchema.optional(),
   cnpj: cnpjSchema.optional(),
-  telefone: telefoneSchema.optional(),
+  telefone: whatsappSchema.optional(),
   categoria: z.enum(CATEGORIAS_LOJA).optional(),
   ativa: z.boolean().optional(),
   logo_url: urlImagemSchema.nullable().optional(),

@@ -97,7 +97,7 @@ export interface Produto {
 }
 
 export type PedidoStatus = "pendente" | "aceito" | "enviado" | "concluido" | "cancelado";
-export type FormaPagamento = "pix" | "cartao";
+export type FormaPagamento = "pix" | "cartao" | "whatsapp";
 
 export interface ItemPedido {
   id: string;

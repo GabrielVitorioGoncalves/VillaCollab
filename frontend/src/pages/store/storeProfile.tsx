@@ -17,6 +17,7 @@ import { useStore } from "../../components/layout/storeContext";
 import { errorMessage } from "../../lib/api";
 import { storeCategories } from "../../lib/categories";
 import { updateStore, uploadImage } from "../../lib/services";
+import { telefoneWhatsappValido } from "../../lib/whatsapp";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -118,7 +119,7 @@ export function StoreProfile() {
 
     if (name.trim().length < 2) return setError("O nome da loja precisa ter pelo menos 2 caracteres.");
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setError("Informe um e-mail válido.");
-    if (phone.trim() && !/^[0-9()+\-\s]{8,20}$/.test(phone.trim())) return setError("Informe um telefone válido, só com números, espaços, parênteses e hífen.");
+    if (!telefoneWhatsappValido(phone)) return setError("Informe o WhatsApp da loja com DDD, por exemplo (47) 99999-9999. É por ele que os clientes finalizam as compras.");
 
     setSaving(true);
     setError("");
@@ -128,7 +129,7 @@ export function StoreProfile() {
         descricao: description.trim() || null,
         categoria: category || null,
         email_contato: email.trim() || null,
-        telefone: phone.trim() || null,
+        telefone: phone.trim(),
         logo_url: logo,
         banner_url: banner,
       });
@@ -294,7 +295,11 @@ export function StoreProfile() {
               </div>
             </FormField>
 
-            <FormField label="Telefone">
+            <FormField
+              label="WhatsApp da loja"
+              required
+              helperText="Os clientes finalizam as compras por este número."
+            >
               <div className="relative">
                 <Phone
                   size={17}
@@ -346,4 +351,4 @@ export function StoreProfile() {
       </form>
     </div>
   );
-}
+}
