@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { supabase, createSupabaseClient } from '../config/supabase';
 import { filtrosLojaSchema, urlImagemSchema } from '../schemas/catalogoSchema';
+import { rpcFailure } from '../errors/rpcFailure';
 
 const params = z.object({ id: z.uuid() });
 const fields = z.object({
@@ -32,9 +33,13 @@ const updateSchema = fields.partial().strict().refine(
 
 async function permissions(userId: string, token: string) {
   const { data, error } = await createSupabaseClient(token).from('usuarios')
-    .select('role, loja_id').eq('id', userId).maybeSingle();
+    .select('role, loja_id, admin_permissoes').eq('id', userId).maybeSingle();
   if (error) throw error;
   return data;
+}
+
+function gereLojas(perfil: { role?: string; admin_permissoes?: string[] | null } | null) {
+  return perfil?.role === 'admin' && (!perfil.admin_permissoes || perfil.admin_permissoes.includes('lojas'));
 }
 
 export class LojaController {
@@ -65,7 +70,7 @@ export class LojaController {
     try {
       const input = createSchema.parse(req.body);
       const perfil = await permissions(req.userId!, req.accessToken!);
-      if (perfil?.role !== 'admin') { res.status(403).json({ erro: 'Sem permissão' }); return; }
+      if (!gereLojas(perfil)) { res.status(403).json({ erro: 'Sem permissão' }); return; }
       const { data, error } = await createSupabaseClient(req.accessToken).from('lojas')
         .insert(input).select().single();
       if (error) {
@@ -81,7 +86,7 @@ export class LojaController {
       const { id } = params.parse(req.params);
       const input = updateSchema.parse(req.body);
       const perfil = await permissions(req.userId!, req.accessToken!);
-      if (perfil?.role !== 'admin' && !(perfil?.role === 'lojista' && perfil.loja_id === id)) {
+      if (!gereLojas(perfil) && !(perfil?.role === 'lojista' && perfil.loja_id === id)) {
         res.status(403).json({ erro: 'Sem permissão' }); return;
       }
       const { data, error } = await createSupabaseClient(req.accessToken).from('lojas')
@@ -99,17 +104,21 @@ export class LojaController {
     try {
       const { id } = params.parse(req.params);
       const perfil = await permissions(req.userId!, req.accessToken!);
-      if (perfil?.role !== 'admin') { res.status(403).json({ erro: 'Sem permissão' }); return; }
+      if (!gereLojas(perfil)) { res.status(403).json({ erro: 'Sem permissão' }); return; }
       // A exclusão é recusada se houver pedidos; o histórico deve ser preservado.
       const client = createSupabaseClient(req.accessToken);
       const { data: pedido, error: consultaError } = await client.from('pedidos')
         .select('id').eq('loja_id', id).limit(1).maybeSingle();
       if (consultaError) throw consultaError;
       if (pedido) { res.status(409).json({ erro: 'Loja possui pedidos' }); return; }
-      const { data, error } = await client.from('lojas').delete().eq('id', id).select('id').maybeSingle();
-      if (error?.code === '23503') { res.status(409).json({ erro: 'Loja possui pedidos' }); return; }
-      if (error) throw error;
-      if (!data) { res.status(404).json({ erro: 'Loja não encontrada' }); return; }
+      const { error } = await client.rpc('admin_excluir_loja', { p_id: id });
+      if (error) {
+        if (rpcFailure(error, res, {
+          CONFLICT: 'Loja possui pedidos', NOT_FOUND: 'Loja não encontrada', FORBIDDEN: 'Sem permissão'
+        })) return;
+        if (error.code === '23503') { res.status(409).json({ erro: 'Loja possui pedidos' }); return; }
+        throw error;
+      }
       res.status(204).end();
     } catch (error) { next(error); }
   }

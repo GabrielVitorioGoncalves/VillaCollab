@@ -45,25 +45,27 @@ function query(table, token) {
   return builder;
 }
 
+const authMock = {
+  async getUser() { return { data: { user: state.authError ? null : { id: usuario } }, error: state.authError }; },
+  async signUp(input) {
+    state.signUp = input;
+    return { data: { user: { id: usuario }, session: null }, error: state.signupError };
+  },
+  async signInWithPassword(input) {
+    state.signIn = input;
+    return { data: { user: { id: usuario }, session: { access_token: 'jwt', refresh_token: 'refresh', expires_at: 1 } }, error: state.loginError };
+  }
+};
 const configPath = require.resolve('../src/config/supabase');
 require.cache[configPath] = {
   id: configPath, filename: configPath, loaded: true,
   exports: {
     supabase: {
       from: table => query(table),
-      auth: {
-        async getUser() { return { data: { user: state.authError ? null : { id: usuario } }, error: state.authError }; },
-        async signUp(input) {
-          state.signUp = input;
-          return { data: { user: { id: usuario }, session: null }, error: state.signupError };
-        },
-        async signInWithPassword(input) {
-          state.signIn = input;
-          return { data: { user: { id: usuario }, session: { access_token: 'jwt', refresh_token: 'refresh', expires_at: 1 } }, error: state.loginError };
-        }
-      }
+      auth: authMock
     },
     createSupabaseClient: token => ({
+      auth: authMock,
       from: table => query(table, token),
       async rpc(name, args) {
         state.rpc = { name, args, token };

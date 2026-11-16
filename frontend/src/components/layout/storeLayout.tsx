@@ -9,8 +9,8 @@ import { Card } from "../ui/card";
 import { RequestStatus } from "../ui/requestStatus";
 import { useCart } from "../../contexts/cartContext";
 import { useRequest } from "../../hooks/useRequest";
-import { getMyStore } from "../../lib/services";
-import { clearSession, getSession } from "../../lib/session";
+import { getMyStore, logout } from "../../lib/services";
+import { getSession } from "../../lib/session";
 import type { MinhaLoja } from "../../types/api";
 
 export function StoreLayout() {
@@ -31,7 +31,7 @@ export function StoreLayout() {
 
   async function handleLogout() {
     await flushCart();
-    clearSession();
+    await logout();
     navigate("/", { replace: true });
   }
 

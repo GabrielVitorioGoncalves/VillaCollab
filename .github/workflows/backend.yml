@@ -9,7 +9,8 @@ on:
     paths:
       - 'backend/**'
       - '.github/workflows/backend.yml'
-
+permissions:
+contents: read
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
