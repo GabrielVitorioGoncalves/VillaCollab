@@ -37,7 +37,7 @@ export const produtoSchema = z.object({
   nome: nomeSchema,
   preco: precoSchema,
   loja_id: lojaParamsSchema.shape.loja_id,
-  descricao: z.string().optional(),
+  descricao: z.string().max(5000).optional(),
   ...vitrineSchema
 });
 
@@ -46,7 +46,7 @@ export type ProdutoInput = z.infer<typeof produtoSchema>;
 export const produtoUpdateSchema = z.object({
   nome: nomeSchema.optional(),
   preco: precoSchema.optional(),
-  descricao: z.string().optional(),
+  descricao: z.string().max(5000).optional(),
   ...vitrineSchema
 })
   .strict()

@@ -43,11 +43,14 @@ require.cache[configPath] = {
         async getUser() { return { data: { user: { id: usuario, email: 'maria@teste.com' } }, error: null }; },
         async signInWithPassword(input) {
           state.signIn = input;
-          return { data: {}, error: input.password === 'senha-certa' ? null : { message: 'invalid' } };
+          return input.password === 'senha-certa'
+            ? { data: { session: { access_token: 'sessao-de-verificacao' } }, error: null }
+            : { data: { session: null }, error: { message: 'invalid' } };
         }
       }
     },
     createSupabaseClient: () => ({
+      auth: require.cache[configPath].exports.supabase.auth,
       from: table => query(table),
       async rpc(name, args) {
         state.rpc = { name, args };
@@ -57,6 +60,10 @@ require.cache[configPath] = {
     async updateAuthUser(token, attributes) {
       state.authUpdate = { token, attributes };
       return { ok: state.authUpdateOk ?? true, status: 200 };
+    },
+    async signOutSession(token, scope) {
+      state.signOuts.push({ token, scope });
+      return { ok: true, status: 204 };
     }
   }
 };
@@ -74,7 +81,7 @@ after(async () => {
 });
 beforeEach(() => {
   state = {
-    calls: [], rows: {},
+    calls: [], rows: {}, signOuts: [],
     profile: { id: usuario, nome: 'Maria', role: 'cliente', loja_id: null, telefone: '47 9999', endereco: null }
   };
 });
@@ -121,14 +128,27 @@ test('trocar senha exige a senha atual correta', async () => {
   assert.equal(certa.status, 204);
   assert.equal(state.signIn.email, 'maria@teste.com');
   assert.deepEqual(state.authUpdate.attributes, { password: 'novasenha123' });
+  assert.deepEqual(state.signOuts, [
+    { token: 'sessao-de-verificacao', scope: 'local' },
+    { token: 'jwt', scope: 'others' }
+  ]);
   assert.equal((await request('/api/auth/senha', 'PATCH', { senha_atual: 'senha-certa', nova_senha: 'curta' })).status, 400);
 });
 
-test('trocar e-mail pede confirmação e recusa o mesmo e-mail', async () => {
-  assert.equal((await request('/api/auth/email', 'PATCH', { email: 'MARIA@teste.com' })).status, 400);
-  const result = await request('/api/auth/email', 'PATCH', { email: 'nova@teste.com' });
+test('trocar e-mail pede a senha atual, confirmação e recusa o mesmo e-mail', async () => {
+  assert.equal((await request('/api/auth/email', 'PATCH', { email: 'MARIA@teste.com', senha_atual: 'senha-certa' })).status, 400);
+  assert.equal((await request('/api/auth/email', 'PATCH', { email: 'nova@teste.com' })).status, 400);
+  const errada = await request('/api/auth/email', 'PATCH', { email: 'nova@teste.com', senha_atual: 'x' });
+  assert.deepEqual(errada, { status: 400, body: { erro: 'Senha atual incorreta' } });
+  assert.equal(state.authUpdate, undefined);
+  const result = await request('/api/auth/email', 'PATCH', { email: 'nova@teste.com', senha_atual: 'senha-certa' });
   assert.deepEqual(result, { status: 200, body: { confirmacao_email_pendente: true } });
   assert.deepEqual(state.authUpdate.attributes, { email: 'nova@teste.com' });
+});
+
+test('sair encerra a sessão no Supabase', async () => {
+  assert.equal((await request('/api/auth/logout', 'POST')).status, 204);
+  assert.deepEqual(state.signOuts, [{ token: 'jwt', scope: 'local' }]);
 });
 
 test('pedido envia variações, endereço e pagamento para a função', async () => {

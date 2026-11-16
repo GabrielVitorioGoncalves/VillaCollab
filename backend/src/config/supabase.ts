@@ -39,3 +39,11 @@ export async function updateAuthUser(accessToken: string, attributes: { email?: 
   });
   return { ok: response.ok, status: response.status };
 }
+
+export async function signOutSession(accessToken: string, scope: 'local' | 'others' | 'global' = 'local') {
+  const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/auth/v1/logout?scope=${scope}`, {
+    method: 'POST',
+    headers: { apikey: supabaseKey, Authorization: `Bearer ${accessToken}` }
+  });
+  return { ok: response.ok || response.status === 401 || response.status === 403, status: response.status };
+}

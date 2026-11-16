@@ -56,6 +56,7 @@ export function ProfilePage() {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
   const [phone, setPhone] = useState("");
   const [personalFeedback, setPersonalFeedback] = useState<Feedback | null>(null);
   const [savingPersonal, setSavingPersonal] = useState(false);
@@ -82,6 +83,7 @@ export function ProfilePage() {
     if (!user) return;
     setName(user.nome);
     setEmail(currentEmail);
+    setEmailPassword("");
     setPhone(user.telefone ?? "");
     setPersonalFeedback(null);
     setEditingPersonal(true);
@@ -105,6 +107,11 @@ export function ProfilePage() {
       setPersonalFeedback({ type: "error", text: "Telefone com até 20 números." });
       return;
     }
+    const emailChanged = email.trim().toLowerCase() !== currentEmail.toLowerCase();
+    if (emailChanged && !emailPassword) {
+      setPersonalFeedback({ type: "error", text: "Informe sua senha atual para trocar o e-mail." });
+      return;
+    }
 
     setSavingPersonal(true);
     setPersonalFeedback(null);
@@ -115,9 +122,9 @@ export function ProfilePage() {
         applyUser(await updateMe({ nome: name.trim(), telefone: phone.trim() || null }));
       }
 
-      const emailChanged = email.trim().toLowerCase() !== currentEmail.toLowerCase();
       if (emailChanged) {
-        await changeEmail(email.trim());
+        await changeEmail(email.trim(), emailPassword);
+        setEmailPassword("");
         setPersonalFeedback({
           type: "success",
           text: `Enviamos um link para ${email.trim()}. O e-mail muda depois da confirmação.`,
@@ -348,6 +355,17 @@ export function ProfilePage() {
                         }
                       />
                     </FormField>
+
+                    {email.trim().toLowerCase() !== currentEmail.toLowerCase() && (
+                      <FormField label="Senha atual" required helperText="Para trocar o e-mail, confirme sua senha.">
+                        <Input
+                          type="password"
+                          value={emailPassword}
+                          autoComplete="current-password"
+                          onChange={(event) => setEmailPassword(event.target.value)}
+                        />
+                      </FormField>
+                    )}
 
                     <FormField label="Telefone">
                       <Input

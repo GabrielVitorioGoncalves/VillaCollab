@@ -206,11 +206,11 @@ export class AdminController {
       }
 
       const dados: Record<string, unknown> = { ...campos };
+      let novoEmailDoResponsavel: { service: ServiceClient; usuario: string } | null = null;
       if (email && email !== atual.responsavel_email?.toLowerCase()) {
         if (atual.responsavel_id) {
           const service = servico(res); if (!service) return;
-          const { error } = await service.auth.admin.updateUserById(atual.responsavel_id, { email, email_confirm: true });
-          if (error) { falhaDeConta(error, res); return; }
+          novoEmailDoResponsavel = { service, usuario: atual.responsavel_id };
         } else {
           const { data: contaId, error } = await ctx.client.rpc('admin_buscar_conta', { p_email: email });
           if (error) throw error;
@@ -228,6 +228,11 @@ export class AdminController {
           if (falhaDeLoja(error, res)) return;
           throw error;
         }
+      }
+      if (novoEmailDoResponsavel) {
+        const { service, usuario } = novoEmailDoResponsavel;
+        const { error } = await service.auth.admin.updateUserById(usuario, { email, email_confirm: true });
+        if (error) { falhaDeConta(error, res); return; }
       }
       const loja = (await listarLojas(ctx.client)).find(item => item.id === id);
       res.json(loja);
