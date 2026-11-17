@@ -46,8 +46,8 @@ export function MyOrders() {
             className="mb-6 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
           >
             {createdCount === 1
-              ? "Pedido enviado para a loja."
-              : `${createdCount} pedidos enviados, um para cada loja.`}
+              ? "Pedido registrado. Abra o pedido e envie para a loja no WhatsApp para combinar o pagamento."
+              : `${createdCount} pedidos registrados, um para cada loja. Abra cada um e envie para a loja no WhatsApp para combinar o pagamento.`}
           </div>
         )}
 

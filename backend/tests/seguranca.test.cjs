@@ -109,11 +109,11 @@ test('limite de pedidos pendentes do banco vira 429', async () => {
 
 test('admin sem a permissão de lojas não cria, edita nem exclui loja pela rota antiga', async () => {
   state.perfil = { role: 'admin', loja_id: null, admin_permissoes: ['usuarios'] };
-  assert.equal((await request('/api/lojas', { method: 'POST', body: { nome: 'Nova', slug: 'nova' } })).status, 403);
+  assert.equal((await request('/api/lojas', { method: 'POST', body: { nome: 'Nova', slug: 'nova', telefone: '(47) 99999-0000' } })).status, 403);
   assert.equal((await request(`/api/lojas/${lojaA}`, { method: 'PATCH', body: { nome: 'Outra' } })).status, 403);
   assert.equal((await request(`/api/lojas/${lojaA}`, { method: 'DELETE' })).status, 403);
   state.perfil = { role: 'admin', loja_id: null, admin_permissoes: ['lojas'] };
-  assert.equal((await request('/api/lojas', { method: 'POST', body: { nome: 'Nova', slug: 'nova' } })).status, 201);
+  assert.equal((await request('/api/lojas', { method: 'POST', body: { nome: 'Nova', slug: 'nova', telefone: '(47) 99999-0000' } })).status, 201);
 });
 
 test('descrição de produto acima de 5000 caracteres é recusada', async () => {

@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { telefoneWhatsappValido } from '../services/whatsapp';
+
+export const whatsappSchema = z.string().trim().max(20)
+  .refine(telefoneWhatsappValido, 'Informe o WhatsApp com DDD, por exemplo (47) 99999-9999');
 
 export const codigoSchema = z.string().trim().toLowerCase().regex(/^[a-z0-9_-]{1,40}$/, 'Código inválido');
 const rotuloSchema = z.string().trim().min(1).max(60);

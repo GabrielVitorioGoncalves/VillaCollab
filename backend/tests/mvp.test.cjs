@@ -120,6 +120,10 @@ test('cadastro não aceita role ou loja_id enviados pelo cliente', async () => {
 test('login rejeita credenciais inválidas e retorna sessão e perfil em caso de sucesso', async () => {
   state.loginError = { message: 'wrong password' };
   assert.equal((await request('/api/auth/login', 'POST', { email: 'x@y.com', password: 'senha' })).status, 401);
+  state.loginError = { message: 'Email not confirmed', code: 'email_not_confirmed' };
+  const naoConfirmado = await request('/api/auth/login', 'POST', { email: 'x@y.com', password: 'senha' });
+  assert.equal(naoConfirmado.status, 403);
+  assert.match(naoConfirmado.body.erro, /Confirme seu e-mail/);
   state.loginError = null;
   const result = await request('/api/auth/login', 'POST', { email: 'x@y.com', password: 'senha' });
   assert.equal(result.status, 200);
@@ -135,7 +139,7 @@ test('catálogo de lojas é público e exige UUID no detalhe', async () => {
   assert.equal((await request('/api/lojas/invalido')).status, 400);
 });
 test('somente admin cadastra loja; slug duplicado retorna conflito', async () => {
-  const input = { nome: 'Nova Loja', slug: 'nova-loja' };
+  const input = { nome: 'Nova Loja', slug: 'nova-loja', telefone: '(47) 99999-0000' };
   assert.equal((await request('/api/lojas', 'POST', input, true)).status, 403);
   state.actor.role = 'admin';
   assert.equal((await request('/api/lojas', 'POST', input, true)).status, 201);

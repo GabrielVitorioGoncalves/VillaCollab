@@ -109,6 +109,10 @@ export function createOrder(
   });
 }
 
+export function getOrderWhatsapp(id: string) {
+  return apiRequest<{ url: string }>(`/pedidos/${id}/whatsapp`, { auth: true });
+}
+
 export function rateProduct(productId: string, nota: number, comentario?: string) {
   return apiRequest<{ id: string; nota_media: number | string | null; total_avaliacoes: number }>(
     `/produtos/${encodeURIComponent(productId)}/avaliacoes`,

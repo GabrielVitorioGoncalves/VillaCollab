@@ -19,9 +19,8 @@ import {
 import { errorMessage } from "../../lib/api";
 import { cartSubtotal, groupByStore, lineProblem } from "../../lib/cart";
 import { formatCurrency, toNumber } from "../../lib/format";
-import { createOrder, getMe, listStores } from "../../lib/services";
-
-type PaymentMethod = "pix" | "credit-card";
+import { createOrder, getMe, getOrderWhatsapp, listStores } from "../../lib/services";
+import { linkWhatsappSeguro, telefoneWhatsappValido } from "../../lib/whatsapp";
 
 function newUuid(): string {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -37,10 +36,6 @@ const MAX_LINES_PER_ORDER = 50;
 export function PaymentPage() {
   const navigate = useNavigate();
   const { lines, removeItems } = useCart();
-
-  const [paymentMethod, setPaymentMethod] =
-    useState<PaymentMethod>("pix");
-  const [installments, setInstallments] = useState(1);
 
   const profile = useRequest("perfil-checkout", getMe);
   const [editedAddress, setEditedAddress] = useState<AddressForm | null>(null);
@@ -69,6 +64,9 @@ export function PaymentPage() {
     }
     if (loja.aceita_pedidos === false) {
       return [`A ${group.storeName} não está recebendo pedidos no momento. Remova os produtos dela para continuar.`];
+    }
+    if (!telefoneWhatsappValido(loja.telefone)) {
+      return [`A ${group.storeName} ainda não cadastrou o WhatsApp para receber pedidos. Remova os produtos dela para continuar.`];
     }
     const minimo = toNumber(loja.pedido_minimo);
     if (minimo > 0 && group.subtotal < minimo) {
@@ -105,6 +103,9 @@ export function PaymentPage() {
     setSubmitting(true);
     setError("");
 
+    const janela = groups.length === 1 ? window.open("", "_blank") : null;
+    if (janela) janela.opener = null;
+
     const endereco = { ...toEndereco(address, true), nome: address.nome.trim() };
     const createdIds: string[] = [];
 
@@ -119,8 +120,7 @@ export function PaymentPage() {
         }));
         const options = {
           endereco_entrega: endereco,
-          forma_pagamento: paymentMethod === "pix" ? ("pix" as const) : ("cartao" as const),
-          ...(paymentMethod === "credit-card" ? { parcelas: installments } : {}),
+          forma_pagamento: "whatsapp" as const,
         };
         const pedido = await createOrder(
           group.storeId,
@@ -136,10 +136,17 @@ export function PaymentPage() {
           createdIds.length > 0
             ? `${createdIds.length === 1 ? "1 pedido foi criado" : `${createdIds.length} pedidos foram criados`}, mas o da ${group.storeName} falhou: `
             : `Não foi possível fechar o pedido da ${group.storeName}: `;
+        janela?.close();
         setError(prefix + errorMessage(caught));
         setSubmitting(false);
         return;
       }
+    }
+
+    if (janela) {
+      const url = await getOrderWhatsapp(createdIds[0]).then((resposta) => linkWhatsappSeguro(resposta.url), () => null);
+      if (url) janela.location.href = url;
+      else janela.close();
     }
 
     navigate(
@@ -186,7 +193,7 @@ export function PaymentPage() {
           </h1>
 
           <p className="mt-1 text-sm text-text-secondary">
-            Preencha seus dados e escolha a forma de pagamento.
+            Confira o endereço de entrega e finalize o pedido pelo WhatsApp da loja.
           </p>
         </section>
 
@@ -338,253 +345,39 @@ export function PaymentPage() {
               </div>
             </Card>
 
-            {/* Forma de pagamento */}
             <Card className="p-6">
               <div>
                 <h2 className="text-lg font-semibold text-text">
-                  Forma de pagamento
+                  Pagamento pelo WhatsApp
                 </h2>
 
                 <p className="mt-1 text-sm text-text-secondary">
-                  Selecione como deseja pagar seu pedido.
+                  O pagamento é combinado direto com a loja, na conversa do WhatsApp.
                 </p>
               </div>
 
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                {/* PIX */}
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("pix")}
-                  className={`
-                    rounded-xl
-                    border
-                    p-4
-                    text-left
-                    transition-colors
-                    ${
-                      paymentMethod === "pix"
-                        ? "border-primary bg-background-secondary"
-                        : "border-border bg-surface hover:bg-background-secondary"
-                    }
-                  `}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`
-                        flex
-                        h-5
-                        w-5
-                        items-center
-                        justify-center
-                        rounded-full
-                        border
-                        ${
-                          paymentMethod === "pix"
-                            ? "border-primary"
-                            : "border-border"
-                        }
-                      `}
-                    >
-                      {paymentMethod === "pix" && (
-                        <div className="h-2.5 w-2.5 rounded-full bg-primary" />
-                      )}
-                    </div>
+              <ol className="mt-5 space-y-3 text-sm text-text">
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-background-secondary text-xs font-semibold">1</span>
+                  <span>Você confirma o pedido aqui e os produtos ficam reservados.</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-background-secondary text-xs font-semibold">2</span>
+                  <span>Abrimos o WhatsApp da loja com uma mensagem pronta: itens, total e endereço.</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-background-secondary text-xs font-semibold">3</span>
+                  <span>Vocês combinam o pagamento e a loja confirma o pedido. O andamento aparece em Meus pedidos.</span>
+                </li>
+              </ol>
 
-                    <div>
-                      <p className="font-medium text-text">
-                        PIX
-                      </p>
-
-                      <p className="mt-0.5 text-xs text-text-secondary">
-                        Pagamento instantâneo
-                      </p>
-                    </div>
-                  </div>
-                </button>
-
-                {/* Cartão */}
-                <button
-                  type="button"
-                  onClick={() =>
-                    setPaymentMethod("credit-card")
-                  }
-                  className={`
-                    rounded-xl
-                    border
-                    p-4
-                    text-left
-                    transition-colors
-                    ${
-                      paymentMethod === "credit-card"
-                        ? "border-primary bg-background-secondary"
-                        : "border-border bg-surface hover:bg-background-secondary"
-                    }
-                  `}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`
-                        flex
-                        h-5
-                        w-5
-                        items-center
-                        justify-center
-                        rounded-full
-                        border
-                        ${
-                          paymentMethod === "credit-card"
-                            ? "border-primary"
-                            : "border-border"
-                        }
-                      `}
-                    >
-                      {paymentMethod === "credit-card" && (
-                        <div className="h-2.5 w-2.5 rounded-full bg-primary" />
-                      )}
-                    </div>
-
-                    <div>
-                      <p className="font-medium text-text">
-                        Cartão de crédito
-                      </p>
-
-                      <p className="mt-0.5 text-xs text-text-secondary">
-                        Visa, Mastercard e outros
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              </div>
+              {groups.length > 1 && (
+                <p className="mt-5 rounded-lg border border-border bg-background-secondary px-4 py-3 text-xs text-text-secondary">
+                  Seu carrinho tem produtos de {groups.length} lojas. Cada loja recebe um pedido, e você envia cada
+                  um pelo WhatsApp a partir de Meus pedidos.
+                </p>
+              )}
             </Card>
-
-            {/* PIX */}
-            {paymentMethod === "pix" && (
-              <Card className="p-6">
-                <div>
-                  <h2 className="text-lg font-semibold text-text">
-                    Pagamento via PIX
-                  </h2>
-
-                  <p className="mt-1 text-sm text-text-secondary">
-                    Após confirmar o pedido, um QR Code será
-                    disponibilizado para pagamento.
-                  </p>
-                </div>
-
-                <div className="mt-6 flex flex-col items-center rounded-xl border border-border bg-background-secondary px-6 py-10">
-                  <div className="flex h-40 w-40 items-center justify-center rounded-lg border border-border bg-white">
-                    <span className="text-xs text-text-secondary">
-                      QR Code
-                    </span>
-                  </div>
-
-                  <p className="mt-5 text-center text-sm font-medium text-text">
-                    QR Code para pagamento
-                  </p>
-
-                  <p className="mt-1 max-w-sm text-center text-xs text-text-secondary">
-                    O código será gerado após a confirmação da
-                    compra.
-                  </p>
-                </div>
-              </Card>
-            )}
-
-            {/* Cartão de crédito */}
-            {paymentMethod === "credit-card" && (
-              <Card className="p-6">
-                <div>
-                  <h2 className="text-lg font-semibold text-text">
-                    Dados do cartão
-                  </h2>
-
-                  <p className="mt-1 text-sm text-text-secondary">
-                    Informe os dados do seu cartão de crédito.
-                  </p>
-                </div>
-
-                <p className="mt-4 rounded-lg border border-border bg-background-secondary px-4 py-3 text-xs text-text-secondary">
-                  A cobrança no cartão ainda não está ativa. Registramos só a forma de
-                  pagamento e as parcelas; os dados do cartão não são enviados nem guardados.
-                </p>
-
-                <div className="mt-6 space-y-5">
-                  <FormField
-                    label="Número do cartão"
-                    required
-                  >
-                    <Input
-                      placeholder="0000 0000 0000 0000"
-                      autoComplete="off"
-                    />
-                  </FormField>
-
-                  <FormField
-                    label="Nome impresso no cartão"
-                    required
-                  >
-                    <Input
-                      placeholder="Nome completo"
-                      autoComplete="off"
-                    />
-                  </FormField>
-
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    <FormField
-                      label="Validade"
-                      required
-                    >
-                      <Input placeholder="MM/AA" autoComplete="off" />
-                    </FormField>
-
-                    <FormField
-                      label="CVV"
-                      required
-                    >
-                      <Input
-                        placeholder="000"
-                        type="password"
-                        autoComplete="off"
-                      />
-                    </FormField>
-                  </div>
-
-                  <FormField
-                    label="Número de parcelas"
-                    required
-                  >
-                    <select
-                      value={installments}
-                      onChange={(event) => setInstallments(Number(event.target.value))}
-                      className="
-                        w-full
-                        rounded-lg
-                        border
-                        border-border
-                        bg-surface
-                        px-4
-                        py-3
-                        text-sm
-                        text-text
-                        outline-none
-                        transition-colors
-                        focus:border-primary
-                      "
-                    >
-                      {[1, 2, 3, 4, 5, 6].map((value) => (
-                        <option key={value} value={value}>
-                          {value}x de{" "}
-                          {(total / value).toLocaleString("pt-BR", {
-                            style: "currency",
-                            currency: "BRL",
-                          })}
-                        </option>
-                      ))}
-                    </select>
-                  </FormField>
-                </div>
-              </Card>
-            )}
           </div>
 
           {/* Resumo */}
@@ -709,11 +502,7 @@ export function PaymentPage() {
                     onClick={handlePayment}
                     disabled={submitting || profile.loading}
                   >
-                    {submitting
-                      ? "Enviando..."
-                      : paymentMethod === "pix"
-                        ? "Gerar pagamento PIX"
-                        : "Finalizar pagamento"}
+                    {submitting ? "Enviando..." : "Finalizar pelo WhatsApp"}
                   </Button>
                 )}
 

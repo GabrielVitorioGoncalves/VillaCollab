@@ -118,7 +118,7 @@ export function AdminStoresPage() {
   const columns: TableColumn<AdminStore>[] = [
     {
       key: "tenant",
-      header: "ID (tenant)",
+      header: "ID",
       render: (store) => <span className="text-text-secondary">{store.slug}</span>,
     },
     {

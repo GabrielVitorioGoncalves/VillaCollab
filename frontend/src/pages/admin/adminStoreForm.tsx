@@ -18,6 +18,7 @@ import {
 } from "../../lib/admin/adminService";
 import { storeCategories } from "../../lib/categories";
 import { formatCnpj, isValidCnpj, normalizeCnpj } from "../../lib/cnpj";
+import { telefoneWhatsappValido } from "../../lib/whatsapp";
 import { isUuid } from "../../lib/format";
 import type { AdminStore, AdminStoreUpdate } from "../../types/admin";
 
@@ -69,9 +70,8 @@ function validate(form: StoreFormState, isEdit: boolean, requireEmail: boolean):
 
   if (!isValidCnpj(form.cnpj)) errors.cnpj = "Informe um CNPJ válido.";
 
-  const telefoneDigits = form.telefone.replace(/\D/g, "").length;
-  if (telefoneDigits < 10 || telefoneDigits > 11 || !/^[0-9()+\-\s]+$/.test(form.telefone.trim())) {
-    errors.telefone = "Informe um telefone com DDD.";
+  if (!telefoneWhatsappValido(form.telefone)) {
+    errors.telefone = "Informe o WhatsApp com DDD, por exemplo (47) 99999-9999.";
   }
 
   if (!form.categoria) errors.categoria = "Escolha uma categoria.";
@@ -299,11 +299,17 @@ function AdminStoreForm({ store, onCancel, onSubmitted }: AdminStoreFormProps) {
               />
             </FormField>
 
-            <FormField label="Telefone" required error={errors.telefone}>
+            <FormField
+              label="WhatsApp da loja"
+              required
+              error={errors.telefone}
+              helperText="Os clientes finalizam as compras por este número."
+            >
               <Input
+                type="tel"
                 value={form.telefone}
                 onChange={(event) => updateField("telefone", event.target.value)}
-                placeholder="(11) 99999-9999"
+                placeholder="(47) 99999-9999"
                 error={!!errors.telefone}
               />
             </FormField>

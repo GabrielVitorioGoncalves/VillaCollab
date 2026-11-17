@@ -9,6 +9,7 @@ router.use(authMiddleware);
 router.post('/', limitePedidos, controller.create);
 router.get('/meus', controller.mine);
 router.get('/loja/:loja_id', controller.byStore);
+router.get('/:id/whatsapp', controller.whatsapp);
 router.get('/:id', controller.detail);
 router.patch('/:id/status', controller.updateStatus);
 export default router;
