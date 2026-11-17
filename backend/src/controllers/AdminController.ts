@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { createServiceClient, createSupabaseClient } from '../config/supabase';
+import { adminComMfa } from '../middlewares/authMiddleware';
 import { rpcFailure } from '../errors/rpcFailure';
 import { enviarImagemDaLoja } from '../services/ImagemLojaService';
 import {
@@ -41,6 +42,13 @@ async function ator(req: Request, res: Response, permissao?: PermissaoAdmin): Pr
   if (error) throw error;
   if (data?.role !== 'admin') {
     res.status(403).json({ erro: 'Acesso restrito a administradores' });
+    return null;
+  }
+  if (!adminComMfa(req)) {
+    res.status(403).json({
+      erro: 'Confirme a verificação em duas etapas para usar o painel',
+      codigo: req.mfaCadastrado ? 'mfa_necessario' : 'mfa_cadastro'
+    });
     return null;
   }
   const permissoes = (data.admin_permissoes as PermissaoAdmin[] | null) ?? [...PERMISSOES_ADMIN];
@@ -109,7 +117,8 @@ async function criarConta(service: ServiceClient, email: string, senha: string, 
     email,
     password: senha,
     email_confirm: true,
-    user_metadata: { nome }
+    user_metadata: { nome },
+    app_metadata: { trocar_senha: true }
   });
 }
 

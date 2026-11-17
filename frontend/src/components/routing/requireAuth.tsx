@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
-import { getToken } from "../../lib/session";
+import { getToken, proximaEtapaDeSeguranca } from "../../lib/session";
 
 export function RequireAuth() {
   const location = useLocation();
@@ -14,6 +14,9 @@ export function RequireAuth() {
       />
     );
   }
+
+  const etapa = proximaEtapaDeSeguranca();
+  if (etapa) return <Navigate to={etapa} replace />;
 
   return <Outlet />;
 }

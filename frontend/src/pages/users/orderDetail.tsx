@@ -14,6 +14,7 @@ import { variantLabel } from "../../lib/catalog";
 import {
   formatDate,
   isUuid,
+  prazoDeConfirmacao,
   orderStatusConfig,
   shortOrderId,
   toNumber,
@@ -183,6 +184,10 @@ export function OrderDetail() {
                 <p className="mt-1 text-sm text-green-800">
                   Envie o pedido para a {storeName} no WhatsApp. A mensagem já vai com os itens e o total; a loja
                   confirma o pedido aqui depois de receber o pagamento.
+                </p>
+                <p className="mt-2 text-xs text-green-800">
+                  Se a loja não confirmar até {prazoDeConfirmacao(order.created_at)}, o pedido é cancelado e os
+                  produtos voltam ao estoque.
                 </p>
                 {whatsapp.error && (
                   <p role="alert" className="mt-2 text-sm text-danger">

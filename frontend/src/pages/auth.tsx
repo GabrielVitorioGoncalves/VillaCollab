@@ -2,12 +2,14 @@ import { useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { Button } from "../components/ui/button";
+import { Captcha } from "../components/ui/captcha";
 import { Card } from "../components/ui/card";
 import { FormField } from "../components/ui/formField";
 import { Input } from "../components/ui/input";
 import { errorMessage } from "../lib/api";
+import { captchaAtivo } from "../lib/captcha";
 import { login, register } from "../lib/services";
-import { saveSession } from "../lib/session";
+import { paginaInicial, saveSession } from "../lib/session";
 
 interface AuthLocationState {
   from?: string;
@@ -51,22 +53,28 @@ export function Auth({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaVersao, setCaptchaVersao] = useState(0);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
     setNotice("");
+    if (captchaAtivo && !captchaToken) {
+      setError("Confirme que você não é um robô.");
+      return;
+    }
     setLoading(true);
     try {
       if (mode === "register") {
-        const result = await register(name.trim(), email.trim(), password);
+        const result = await register(name.trim(), email.trim(), password, captchaToken);
         setNotice(result.confirmacao_email_pendente
           ? "Conta criada! Confirme seu e-mail antes de entrar."
           : "Conta criada! Agora você pode entrar.");
         setMode("login");
         setPassword("");
       } else {
-        const result = await login(email.trim(), password);
+        const result = await login(email.trim(), password, captchaToken);
         if (!result?.access_token || !result.usuario?.nome) throw new Error("Resposta inválida da API.");
         saveSession({
           token: result.access_token,
@@ -74,14 +82,20 @@ export function Auth({
           email: email.trim(),
           usuario: result.usuario,
         });
-        const home =
-          result.usuario.role === "lojista" ? "/store/dashboard" : result.usuario.role === "admin" ? "/admin" : "/user/home";
-        navigate(requestedPath ?? home, { replace: true });
+        if (result.usuario.trocar_senha) {
+          navigate("/conta/nova-senha", { replace: true });
+        } else if (result.mfa?.necessario || result.mfa?.cadastro_necessario) {
+          navigate("/conta/verificacao", { replace: true });
+        } else {
+          navigate(requestedPath ?? paginaInicial(result.usuario.role), { replace: true });
+        }
       }
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
       setLoading(false);
+      setCaptchaToken("");
+      setCaptchaVersao((versao) => versao + 1);
     }
   };
 
@@ -299,6 +313,8 @@ export function Auth({
                   </span>
                 </label>
 
+                <Captcha key={`cadastro-${captchaVersao}`} onToken={setCaptchaToken} />
+
                 {/* Criar conta */}
                 <Button
                   type="submit"
@@ -424,6 +440,8 @@ export function Auth({
                     Esqueceu a Senha?
                   </button>
                 </div>
+
+                <Captcha key={`login-${captchaVersao}`} onToken={setCaptchaToken} />
 
                 {/* Entrar */}
                 <Button

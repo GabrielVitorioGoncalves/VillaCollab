@@ -10,7 +10,7 @@ import { RequestStatus } from "../ui/requestStatus";
 import { useCart } from "../../contexts/cartContext";
 import { useRequest } from "../../hooks/useRequest";
 import { getMyStore, logout } from "../../lib/services";
-import { getSession } from "../../lib/session";
+import { getSession, proximaEtapaDeSeguranca } from "../../lib/session";
 import type { MinhaLoja } from "../../types/api";
 
 export function StoreLayout() {
@@ -21,13 +21,16 @@ export function StoreLayout() {
   const session = getSession();
   const isSeller = session?.usuario?.role === "lojista";
 
-  const store = useRequest(isSeller ? "minha-loja" : null, getMyStore);
+  const store = useRequest(isSeller && !proximaEtapaDeSeguranca(session) ? "minha-loja" : null, getMyStore);
   const [edited, setEdited] = useState<MinhaLoja | null>(null);
   const loja = edited && edited.id === store.data?.id ? edited : store.data;
 
   if (!session) {
     return <Navigate to="/" replace state={{ from: location.pathname }} />;
   }
+
+  const etapaDeSeguranca = proximaEtapaDeSeguranca(session);
+  if (etapaDeSeguranca) return <Navigate to={etapaDeSeguranca} replace />;
 
   async function handleLogout() {
     await flushCart();

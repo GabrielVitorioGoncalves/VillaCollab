@@ -13,6 +13,10 @@ import type {
   FormaPagamento,
   LoginResponse,
   Loja,
+  MfaCadastro,
+  MfaStatus,
+  PaginaDePedidos,
+  SessaoMfa,
   Pedido,
   Produto,
   RegisterResponse,
@@ -21,15 +25,38 @@ import type {
 
 /* Autenticação */
 
-export function login(email: string, password: string) {
-  return apiRequest<LoginResponse>("/auth/login", { method: "POST", body: { email, password } });
+export function login(email: string, password: string, captchaToken?: string) {
+  return apiRequest<LoginResponse>("/auth/login", {
+    method: "POST",
+    body: { email, password, ...(captchaToken ? { captcha_token: captchaToken } : {}) },
+  });
 }
 
-export function register(nome: string, email: string, password: string) {
+export function register(nome: string, email: string, password: string, captchaToken?: string) {
   return apiRequest<RegisterResponse>("/auth/register", {
     method: "POST",
-    body: { nome, email, password },
+    body: { nome, email, password, ...(captchaToken ? { captcha_token: captchaToken } : {}) },
   });
+}
+
+export function getMfaStatus() {
+  return apiRequest<MfaStatus>("/auth/mfa", { auth: true });
+}
+
+export function startMfaEnrollment() {
+  return apiRequest<MfaCadastro>("/auth/mfa/cadastro", { method: "POST", auth: true });
+}
+
+export function verifyMfa(codigo: string, fatorId?: string) {
+  return apiRequest<SessaoMfa>("/auth/mfa/verificar", {
+    method: "POST",
+    auth: true,
+    body: { codigo, ...(fatorId ? { fator_id: fatorId } : {}) },
+  });
+}
+
+export function deleteAccount(senhaAtual: string) {
+  return apiRequest<void>("/auth/me", { method: "DELETE", auth: true, body: { senha_atual: senhaAtual } });
 }
 
 export function getMe() {
@@ -72,7 +99,7 @@ export function listStores() {
 }
 
 export function getStore(id: string) {
-  return apiRequest<Loja>(`/lojas/${encodeURIComponent(id)}`);
+  return apiRequest<Loja>(`/lojas/${encodeURIComponent(id)}`, { auth: "optional" });
 }
 
 export function listStoreProducts(storeId: string) {
@@ -80,7 +107,7 @@ export function listStoreProducts(storeId: string) {
 }
 
 export function getProduct(id: string) {
-  return apiRequest<Produto>(`/produtos/${encodeURIComponent(id)}`);
+  return apiRequest<Produto>(`/produtos/${encodeURIComponent(id)}`, { auth: "optional" });
 }
 
 export interface NewOrderItem {
@@ -122,6 +149,10 @@ export function rateProduct(productId: string, nota: number, comentario?: string
 
 export function listMyOrders() {
   return apiRequest<Pedido[]>("/pedidos/meus", { auth: true });
+}
+
+export function listMyOrdersPage(pagina: number, porPagina = 10) {
+  return apiRequest<PaginaDePedidos>(`/pedidos/meus?pagina=${pagina}&por_pagina=${porPagina}`, { auth: true });
 }
 
 export function getOrder(id: string) {

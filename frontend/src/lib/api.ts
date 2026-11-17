@@ -1,14 +1,16 @@
-import { clearSession, getToken, SESSION_EXPIRED_EVENT } from "./session";
+import { clearSession, getToken, SECURITY_REQUIRED_EVENT, SESSION_EXPIRED_EVENT } from "./session";
 
 const API_URL = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:3333" : "")).replace(/\/+$/, "");
 
 export class ApiError extends Error {
   status: number;
+  codigo?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, codigo?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.codigo = codigo;
   }
 }
 
@@ -17,7 +19,7 @@ interface RequestOptions {
   body?: unknown;
   file?: Blob;
   headers?: Record<string, string>;
-  auth?: boolean;
+  auth?: boolean | "optional";
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -27,7 +29,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (file) headers["Content-Type"] = file.type || "application/octet-stream";
   else if (body !== undefined) headers["Content-Type"] = "application/json";
 
-  if (auth) {
+  if (auth === "optional") {
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } else if (auth) {
     const token = getToken();
     if (!token) {
       notifySessionExpired();
@@ -52,13 +57,17 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    if (response.status === 401 && auth) notifySessionExpired();
+    if (response.status === 401 && auth === true) notifySessionExpired();
+    const codigo = data && typeof data.codigo === "string" ? data.codigo : undefined;
+    if (response.status === 403 && codigo && ["troca_de_senha", "mfa_cadastro", "mfa_necessario"].includes(codigo)) {
+      window.dispatchEvent(new CustomEvent(SECURITY_REQUIRED_EVENT, { detail: codigo }));
+    }
     let message =
       data && typeof data.erro === "string" ? data.erro : "Não foi possível concluir a operação.";
     const details = data?.detalhes && typeof data.detalhes === "object" ? Object.values(data.detalhes) : [];
     const first = details.flat().find((item): item is string => typeof item === "string");
     if (response.status === 400 && first) message = `${message}: ${first}`;
-    throw new ApiError(message, response.status);
+    throw new ApiError(message, response.status, codigo);
   }
 
   return data as T;

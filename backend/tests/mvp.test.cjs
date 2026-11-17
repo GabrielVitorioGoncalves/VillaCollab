@@ -8,6 +8,7 @@ const usuario = '33333333-3333-4333-8333-333333333333';
 const outro = '44444444-4444-4444-8444-444444444444';
 const produto = '55555555-5555-4555-8555-555555555555';
 const pedido = '66666666-6666-4666-8666-666666666666';
+const TOKEN = `cabecalho.${Buffer.from(JSON.stringify({ aal: 'aal2' })).toString('base64url')}.assinatura`;
 let state;
 let server;
 let base;
@@ -98,7 +99,7 @@ beforeEach(() => {
 async function request(path, method = 'GET', body, auth = false) {
   const response = await fetch(base + path, {
     method, headers: { ...(body ? { 'Content-Type': 'application/json' } : {}),
-      ...(auth ? { Authorization: 'Bearer jwt' } : {}) },
+      ...(auth ? { Authorization: `Bearer ${TOKEN}` } : {}) },
     body: body ? JSON.stringify(body) : undefined
   });
   const text = await response.text();
@@ -184,7 +185,7 @@ test('pedido usa RPC com token, sem preço, total ou usuario_id do cliente', asy
   const input = { loja_id: lojaA, itens: [{ produto_id: produto, quantidade: 2 }] };
   const result = await request('/api/pedidos', 'POST', input, true);
   assert.equal(result.status, 201);
-  assert.deepEqual(state.rpc, { name: 'criar_pedido', args: { p_loja_id: lojaA, p_itens: input.itens }, token: 'jwt' });
+  assert.deepEqual(state.rpc, { name: 'criar_pedido', args: { p_loja_id: lojaA, p_itens: input.itens }, token: TOKEN });
   assert.equal((await request('/api/pedidos', 'POST', { ...input, total: 0 }, true)).status, 400);
   assert.equal((await request('/api/pedidos', 'POST', { ...input, itens: [...input.itens, ...input.itens] }, true)).status, 400);
 });

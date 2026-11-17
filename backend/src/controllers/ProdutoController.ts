@@ -57,7 +57,7 @@ export class ProdutoController {
   async buscarPorId(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = produtoParamsSchema.parse(req.params);
-      const produto = await produtoService.buscarProdutoPorId(id);
+      const produto = await produtoService.buscarProdutoPorId(id, req.accessToken);
       if (!produto) {
         res.status(404).json({ erro: 'Produto não encontrado.' });
         return;

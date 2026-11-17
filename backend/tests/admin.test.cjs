@@ -7,6 +7,7 @@ const outro = '22222222-2222-4222-8222-222222222222';
 const lojaA = '33333333-3333-4333-8333-333333333333';
 const novaConta = '44444444-4444-4444-8444-444444444444';
 const CNPJ_VALIDO = '11.222.333/0001-81';
+const TOKEN = `cabecalho.${Buffer.from(JSON.stringify({ aal: 'aal2' })).toString('base64url')}.assinatura`;
 let state;
 let server;
 let base;
@@ -100,7 +101,7 @@ beforeEach(() => {
   };
 });
 
-async function request(path, method = 'GET', body, token = 'ok') {
+async function request(path, method = 'GET', body, token = TOKEN) {
   const response = await fetch(base + path, {
     method,
     headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -247,7 +248,7 @@ test('novo administrador não recebe permissão que quem cadastra não tem', asy
 test('envio de logo pelo admin aceita só imagem e loja existente', async () => {
   const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
   const send = (body) => fetch(`${base}/api/admin/lojas/${lojaA}/imagens?tipo=logo`, {
-    method: 'POST', headers: { Authorization: 'Bearer ok', 'Content-Type': 'image/png' }, body
+    method: 'POST', headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'image/png' }, body
   });
   assert.equal((await send(Buffer.from('texto'))).status, 400);
   assert.equal((await send(png)).status, 201);

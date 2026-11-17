@@ -20,7 +20,7 @@ import { RequestStatus } from "../../components/ui/requestStatus";
 import { useRequest } from "../../hooks/useRequest";
 import { ApiError, errorMessage } from "../../lib/api";
 import { variantLabel } from "../../lib/catalog";
-import { formatCurrency, formatDateTime, isUuid, shortOrderId, toNumber } from "../../lib/format";
+import { formatCurrency, formatDateTime, isUuid, prazoDeConfirmacao, shortOrderId, toNumber } from "../../lib/format";
 import { getStoreOrder, updateOrderStatus } from "../../lib/services";
 import type { PedidoLoja, PedidoStatus } from "../../types/api";
 
@@ -460,7 +460,8 @@ export function OrderDetailPage() {
             {pedido.forma_pagamento === "whatsapp" && pedido.status === "pendente" && (
               <p className="mt-2 text-xs text-text-secondary">
                 O cliente vai te chamar no WhatsApp da loja com este pedido. Confirme aqui só depois de
-                receber o pagamento.
+                receber o pagamento. Sem confirmação até {prazoDeConfirmacao(pedido.created_at)}, o pedido é
+                cancelado automaticamente.
               </p>
             )}
 

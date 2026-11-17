@@ -47,3 +47,19 @@ export async function signOutSession(accessToken: string, scope: 'local' | 'othe
   });
   return { ok: response.ok || response.status === 401 || response.status === 403, status: response.status };
 }
+
+export async function requisicaoAuth(accessToken: string, method: 'GET' | 'POST' | 'DELETE', caminho: string, corpo?: unknown) {
+  const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/auth/v1${caminho}`, {
+    method,
+    headers: {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: corpo === undefined ? undefined : JSON.stringify(corpo)
+  });
+  const texto = await response.text();
+  let dados: unknown = null;
+  try { dados = texto ? JSON.parse(texto) : null; } catch { dados = null; }
+  return { ok: response.ok, status: response.status, dados };
+}

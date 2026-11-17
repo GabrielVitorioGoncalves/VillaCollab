@@ -1,5 +1,6 @@
 // Só contra um ambiente de teste: cria e apaga contas, lojas e pedidos.
 import { execFileSync } from 'node:child_process';
+import { createHmac } from 'node:crypto';
 import assert from 'node:assert/strict';
 
 const API = process.env.API_URL ?? 'http://localhost:3333/api';
@@ -42,10 +43,45 @@ async function register(nome) {
   assert.equal(r.status, 201, JSON.stringify(r.body));
   return { id: r.body.id, email };
 }
+const segredosMfa = new Map();
+const SENHA_TROCADA = 'senha12345-nova';
+
+function codigoTotp(segredo) {
+  const alfabeto = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const bits = [...segredo.replace(/=+$/, '').toUpperCase()].map(c => alfabeto.indexOf(c).toString(2).padStart(5, '0')).join('');
+  const chave = Buffer.from(bits.match(/.{8}/g).map(b => parseInt(b, 2)));
+  const contador = Buffer.alloc(8);
+  contador.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000)));
+  const hash = createHmac('sha1', chave).update(contador).digest();
+  const inicio = hash[hash.length - 1] & 0xf;
+  return String((hash.readUInt32BE(inicio) & 0x7fffffff) % 1000000).padStart(6, '0');
+}
+
 async function login(email, password = 'senha12345') {
-  const r = await api('/auth/login', { method: 'POST', body: { email, password } });
+  let r = await api('/auth/login', { method: 'POST', body: { email, password } });
+  if (r.status === 401 && password === 'senha12345') {
+    password = SENHA_TROCADA;
+    r = await api('/auth/login', { method: 'POST', body: { email, password } });
+  }
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  return r.body.access_token;
+  let token = r.body.access_token;
+  if (r.body.usuario.trocar_senha) {
+    const troca = await api('/auth/senha', { method: 'PATCH', token, body: { senha_atual: password, nova_senha: SENHA_TROCADA } });
+    assert.equal(troca.status, 204, JSON.stringify(troca.body));
+  }
+  if (r.body.mfa?.cadastro_necessario) {
+    const cadastro = await api('/auth/mfa/cadastro', { method: 'POST', token });
+    assert.equal(cadastro.status, 201, JSON.stringify(cadastro.body));
+    segredosMfa.set(r.body.usuario.id, cadastro.body.segredo);
+    const verificado = await api('/auth/mfa/verificar', { method: 'POST', token, body: { fator_id: cadastro.body.fator_id, codigo: codigoTotp(cadastro.body.segredo) } });
+    assert.equal(verificado.status, 200, JSON.stringify(verificado.body));
+    token = verificado.body.access_token;
+  } else if (r.body.mfa?.necessario) {
+    const verificado = await api('/auth/mfa/verificar', { method: 'POST', token, body: { codigo: codigoTotp(segredosMfa.get(r.body.usuario.id)) } });
+    assert.equal(verificado.status, 200, JSON.stringify(verificado.body));
+    token = verificado.body.access_token;
+  }
+  return token;
 }
 async function step(name, fn) {
   try { await fn(); results.push(`ok   ${name}`); }

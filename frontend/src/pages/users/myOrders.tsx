@@ -3,15 +3,20 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Price } from "../../components/marketplace/price";
 import { RequestStatus } from "../../components/ui/requestStatus";
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useRequest } from "../../hooks/useRequest";
 import { formatDate, orderStatusConfig, shortOrderId, toNumber } from "../../lib/format";
-import { listMyOrders, listStores } from "../../lib/services";
+import { errorMessage } from "../../lib/api";
+import { listMyOrdersPage, listStores } from "../../lib/services";
+import type { Pedido } from "../../types/api";
+
+const POR_PAGINA = 10;
 
 async function loadOrders() {
-  const [pedidos, lojas] = await Promise.all([listMyOrders(), listStores()]);
+  const [primeira, lojas] = await Promise.all([listMyOrdersPage(1, POR_PAGINA), listStores()]);
   const storeNames = new Map(lojas.map((loja) => [loja.id, loja.nome]));
-  return { pedidos, storeNames };
+  return { primeira, storeNames };
 }
 
 export function MyOrders() {
@@ -20,7 +25,28 @@ export function MyOrders() {
     const createdCount = (location.state as { createdCount?: number } | null)?.createdCount;
 
     const { data, loading, error, reload } = useRequest("meus-pedidos", loadOrders);
-    const orders = data?.pedidos ?? [];
+    const [mais, setMais] = useState<Pedido[]>([]);
+    const [paginaCarregada, setPaginaCarregada] = useState(1);
+    const [carregandoMais, setCarregandoMais] = useState(false);
+    const [erroMais, setErroMais] = useState("");
+    const primeiros = data?.primeira.itens ?? [];
+    const orders = [...primeiros, ...mais.filter((pedido) => !primeiros.some((item) => item.id === pedido.id))];
+    const total = data?.primeira.total ?? 0;
+
+    const carregarMais = async () => {
+        if (carregandoMais) return;
+        setCarregandoMais(true);
+        setErroMais("");
+        try {
+            const proxima = await listMyOrdersPage(paginaCarregada + 1, POR_PAGINA);
+            setMais((atual) => [...atual, ...proxima.itens.filter((pedido) => !atual.some((item) => item.id === pedido.id))]);
+            setPaginaCarregada(proxima.pagina);
+        } catch (caught) {
+            setErroMais(errorMessage(caught));
+        } finally {
+            setCarregandoMais(false);
+        }
+    };
 
     const handleViewOrder = (id: string) => {
         navigate(`/user/pedidos/${id}`);
@@ -155,6 +181,22 @@ export function MyOrders() {
             );
           })}
         </section>
+
+        {data && orders.length < total && (
+          <div className="mt-6 flex flex-col items-center gap-2">
+            <p className="text-sm text-text-secondary">
+              Mostrando {orders.length} de {total} pedidos
+            </p>
+            <Button variant="outline" disabled={carregandoMais} onClick={carregarMais}>
+              {carregandoMais ? "Carregando..." : "Ver mais pedidos"}
+            </Button>
+            {erroMais && (
+              <p role="alert" className="text-sm text-danger">
+                {erroMais}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Estado vazio */}
         {data && orders.length === 0 && (

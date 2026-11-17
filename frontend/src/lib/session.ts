@@ -6,6 +6,7 @@ const SESSION_KEY = "villacollab_session";
 
 export const SESSION_EXPIRED_EVENT = "villacollab:session-expired";
 export const SESSION_CHANGED_EVENT = "villacollab:session-changed";
+export const SECURITY_REQUIRED_EVENT = "villacollab:security-required";
 
 function notifyChanged() {
   window.dispatchEvent(new Event(SESSION_CHANGED_EVENT));
@@ -56,6 +57,29 @@ export function getUserName(): string | null {
 
 export function getUserId(): string | null {
   return getSession()?.usuario?.id ?? null;
+}
+
+export function nivelDaSessao(token = getToken()): "aal1" | "aal2" {
+  try {
+    const parte = (token ?? "").split(".")[1] ?? "";
+    const json = atob(parte.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(parte.length / 4) * 4, "="));
+    return JSON.parse(json)?.aal === "aal2" ? "aal2" : "aal1";
+  } catch {
+    return "aal1";
+  }
+}
+
+export function paginaInicial(role?: string): string {
+  if (role === "lojista") return "/store/dashboard";
+  if (role === "admin") return "/admin";
+  return "/user/home";
+}
+
+export function proximaEtapaDeSeguranca(session: Session | null = getSession()): string | null {
+  if (!session) return null;
+  if (session.usuario?.trocar_senha) return "/conta/nova-senha";
+  if (session.usuario?.role === "admin" && nivelDaSessao(session.token) !== "aal2") return "/conta/verificacao";
+  return null;
 }
 
 export function saveSession(session: Session) {

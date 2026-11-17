@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { supabase, createSupabaseClient } from '../config/supabase';
 import { filtrosLojaSchema, urlImagemSchema, whatsappSchema } from '../schemas/catalogoSchema';
 import { rpcFailure } from '../errors/rpcFailure';
+import { adminComMfa } from '../middlewares/authMiddleware';
 
 const params = z.object({ id: z.uuid() });
 const fields = z.object({
@@ -38,8 +39,9 @@ async function permissions(userId: string, token: string) {
   return data;
 }
 
-function gereLojas(perfil: { role?: string; admin_permissoes?: string[] | null } | null) {
-  return perfil?.role === 'admin' && (!perfil.admin_permissoes || perfil.admin_permissoes.includes('lojas'));
+function gereLojas(perfil: { role?: string; admin_permissoes?: string[] | null } | null, req: Request) {
+  return perfil?.role === 'admin' && adminComMfa(req)
+    && (!perfil.admin_permissoes || perfil.admin_permissoes.includes('lojas'));
 }
 
 export class LojaController {
@@ -58,7 +60,7 @@ export class LojaController {
   async detail(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = params.parse(req.params);
-      const { data, error } = await supabase.from('lojas')
+      const { data, error } = await (req.accessToken ? createSupabaseClient(req.accessToken) : supabase).from('lojas')
         .select(columns).eq('id', id).maybeSingle();
       if (error) throw error;
       if (!data) { res.status(404).json({ erro: 'Loja não encontrada' }); return; }
@@ -70,7 +72,7 @@ export class LojaController {
     try {
       const input = createSchema.parse(req.body);
       const perfil = await permissions(req.userId!, req.accessToken!);
-      if (!gereLojas(perfil)) { res.status(403).json({ erro: 'Sem permissão' }); return; }
+      if (!gereLojas(perfil, req)) { res.status(403).json({ erro: 'Sem permissão' }); return; }
       const { data, error } = await createSupabaseClient(req.accessToken).from('lojas')
         .insert(input).select().single();
       if (error) {
@@ -86,7 +88,7 @@ export class LojaController {
       const { id } = params.parse(req.params);
       const input = updateSchema.parse(req.body);
       const perfil = await permissions(req.userId!, req.accessToken!);
-      if (!gereLojas(perfil) && !(perfil?.role === 'lojista' && perfil.loja_id === id)) {
+      if (!gereLojas(perfil, req) && !(perfil?.role === 'lojista' && perfil.loja_id === id)) {
         res.status(403).json({ erro: 'Sem permissão' }); return;
       }
       const { data, error } = await createSupabaseClient(req.accessToken).from('lojas')
@@ -104,7 +106,7 @@ export class LojaController {
     try {
       const { id } = params.parse(req.params);
       const perfil = await permissions(req.userId!, req.accessToken!);
-      if (!gereLojas(perfil)) { res.status(403).json({ erro: 'Sem permissão' }); return; }
+      if (!gereLojas(perfil, req)) { res.status(403).json({ erro: 'Sem permissão' }); return; }
       // A exclusão é recusada se houver pedidos; o histórico deve ser preservado.
       const client = createSupabaseClient(req.accessToken);
       const { data: pedido, error: consultaError } = await client.from('pedidos')

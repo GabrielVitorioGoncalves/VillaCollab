@@ -7,7 +7,7 @@ import { useCart } from "../../contexts/cartContext";
 import { useRequest } from "../../hooks/useRequest";
 import { getAdminMe } from "../../lib/admin/adminService";
 import { logout } from "../../lib/services";
-import { getSession } from "../../lib/session";
+import { getSession, proximaEtapaDeSeguranca } from "../../lib/session";
 import type { PermissaoAdmin } from "../../types/admin";
 import { adminPagePermission, type AdminContextValue } from "./adminContext";
 import { Sidebar } from "./sideBar";
@@ -20,11 +20,14 @@ export function AdminLayout() {
   const { flush: flushCart } = useCart();
   const session = getSession();
   const isAdmin = session?.usuario?.role === "admin";
-  const request = useRequest(session && isAdmin ? "admin-me" : null, getAdminMe);
+  const etapaDeSeguranca = proximaEtapaDeSeguranca(session);
+  const request = useRequest(session && isAdmin && !etapaDeSeguranca ? "admin-me" : null, getAdminMe);
 
   if (!session) {
     return <Navigate to="/" replace state={{ from: location.pathname }} />;
   }
+
+  if (etapaDeSeguranca) return <Navigate to={etapaDeSeguranca} replace />;
 
   if (!isAdmin) {
     return (
