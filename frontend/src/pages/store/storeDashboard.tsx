@@ -69,7 +69,7 @@ export function Dashboard() {
   }
 
   const { pedidos, produtos, now } = data;
-  const validos = pedidos.filter((pedido) => pedido.status !== "cancelado");
+  const validos = pedidos.filter((pedido) => pedido.status !== "cancelado" && pedido.status !== "pendente");
   const vendas = validos.reduce((total, pedido) => total + toNumber(pedido.total), 0);
   const pendentes = pedidos.filter((pedido) => pedido.status === "pendente").length;
   const semEstoque = produtos.filter((produto) => produto.estoque <= 0).length;

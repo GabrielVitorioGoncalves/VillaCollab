@@ -29,6 +29,7 @@ import { useRequest } from "../../hooks/useRequest";
 import { promotionOf, ratingOf, toStoreFilters } from "../../lib/catalog";
 import { formatCurrency, isUuid, toNumber } from "../../lib/format";
 import { getStore, listStoreProducts } from "../../lib/services";
+import { linkConversaWhatsapp } from "../../lib/whatsapp";
 
 interface Store {
   name: string;
@@ -124,6 +125,8 @@ export function StorePage() {
         rating: ratingOf(data.loja)?.rating,
       }
     : null;
+
+  const whatsappDaLoja = linkConversaWhatsapp(data?.loja.telefone);
 
   const storeFilters = useMemo(
     () => (data ? toStoreFilters(data.loja) : []),
@@ -384,32 +387,27 @@ return (
   <main className="min-h-screen bg-background">
     <div className="mx-auto w-full max-w-[1240px] px-5 py-8">
 
-      {/* Banner */}
-      <section
-        className="
-          h-[220px]
-          overflow-hidden
-          rounded-xl
-          bg-background-secondary
-        "
-      >
-        {store.banner_url ? (
+      {store.banner_url && (
+        <section className="mb-7 h-[160px] overflow-hidden rounded-xl bg-background-secondary sm:h-[220px]">
           <img
             src={store.banner_url}
             alt={`Banner da ${store.name}`}
             className="h-full w-full object-cover"
           />
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            <span className="text-3xl font-medium text-text-secondary">
-              Banner da loja
-            </span>
-          </div>
-        )}
-      </section>
+        </section>
+      )}
 
       {/* Informações da loja */}
-      <section className="mt-7">
+      <section className="flex items-start gap-4">
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-white sm:h-20 sm:w-20">
+            {store.logo_url ? (
+              <img src={store.logo_url} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="text-2xl font-bold text-text-secondary">
+                {store.name.charAt(0).toUpperCase()}
+              </span>
+            )}
+          </div>
 
           {/* Informações */}
           <div className="min-w-0 flex-1">
@@ -458,6 +456,21 @@ return (
                 ]
                   .filter(Boolean)
                   .join(" · ")}
+              </p>
+            )}
+
+            {(whatsappDaLoja || data?.loja.email_contato) && (
+              <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                {whatsappDaLoja && (
+                  <a href={whatsappDaLoja} target="_blank" rel="noreferrer" className="text-text underline-offset-4 hover:underline">
+                    WhatsApp {data?.loja.telefone}
+                  </a>
+                )}
+                {data?.loja.email_contato && (
+                  <a href={`mailto:${data.loja.email_contato}`} className="text-text underline-offset-4 hover:underline">
+                    {data.loja.email_contato}
+                  </a>
+                )}
               </p>
             )}
 

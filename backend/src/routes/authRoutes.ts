@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { AuthController } from '../controllers/AuthController';
 import { authMiddleware } from '../middlewares/authMiddleware';
-import { limiteCadastro, limiteCredenciais, limiteLoginConta, limiteLoginIp } from '../middlewares/rateLimit';
+import {
+  limiteCadastro, limiteCredenciais, limiteLoginConta, limiteLoginIp, limiteRecuperacaoConta, limiteRecuperacaoIp
+} from '../middlewares/rateLimit';
 import { exigirCaptcha } from '../middlewares/captcha';
 
 const router = Router();
@@ -17,4 +19,6 @@ router.post('/mfa/cadastro', authMiddleware, limiteCredenciais, controller.mfaCa
 router.post('/mfa/verificar', authMiddleware, limiteCredenciais, controller.mfaVerificar);
 router.patch('/email', authMiddleware, limiteCredenciais, controller.changeEmail);
 router.patch('/senha', authMiddleware, limiteCredenciais, controller.changePassword);
+router.post('/senha/recuperar', limiteRecuperacaoIp, limiteRecuperacaoConta, exigirCaptcha, controller.recuperarSenha);
+router.post('/senha/redefinir', authMiddleware, limiteCredenciais, controller.redefinirSenha);
 export default router;

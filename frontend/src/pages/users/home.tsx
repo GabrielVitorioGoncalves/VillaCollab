@@ -35,26 +35,31 @@ export function Home() {
 
   return (
     <main className="min-h-screen bg-background">
-      <div className="mx-auto w-full max-w-[1353px] px-5 py-7">
-        {/* Banner */}
-        <section
-          className="
-            h-[271px]
-            w-full
-            overflow-hidden
-            rounded-[22px]
-            bg-background-secondary
-          "
-        >
-          <div className="flex h-full items-center justify-center">
-            <span className="text-4xl font-medium text-muted">
-              Banner
-            </span>
-          </div>
-        </section>
+      {/* Banner */}
+      <section
+        className="
+          h-[150px]
+          w-full
+          overflow-hidden
+          border-b
+          border-border
+          bg-surface
+          sm:h-[180px]
+        "
+      >
+        <picture className="block h-full w-full">
+          <source media="(max-width: 639px)" srcSet="/banner-home-celular.png" />
+          <img
+            src="/banner-home.png"
+            alt="Villa Collab, marketplace de lojas locais"
+            className="h-full w-full object-cover"
+          />
+        </picture>
+      </section>
 
+      <div className="mx-auto w-full max-w-[1353px] px-5 py-7">
         {/* Lojas */}
-        <section className="mt-8">
+        <section>
           <div className="mb-5">
             <h1 className="text-2xl font-bold text-text">
               {search ? `Lojas para "${search}"` : "Lojas"}

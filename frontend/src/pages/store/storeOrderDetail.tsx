@@ -22,6 +22,7 @@ import { ApiError, errorMessage } from "../../lib/api";
 import { variantLabel } from "../../lib/catalog";
 import { formatCurrency, formatDateTime, isUuid, prazoDeConfirmacao, shortOrderId, toNumber } from "../../lib/format";
 import { getStoreOrder, updateOrderStatus } from "../../lib/services";
+import { linkConversaWhatsapp } from "../../lib/whatsapp";
 import type { PedidoLoja, PedidoStatus } from "../../types/api";
 
 type OrderStatus =
@@ -177,6 +178,7 @@ export function OrderDetailPage() {
     })),
   };
   const status = statusFromDb[pedido.status];
+  const whatsappCliente = linkConversaWhatsapp(pedido.cliente?.telefone);
 
   const subtotal = order.items.reduce((total, item) => total + item.subtotal, 0);
 
@@ -381,6 +383,16 @@ export function OrderDetailPage() {
                 <p className="mt-1 text-sm font-medium text-text">
                   {order.phone}
                 </p>
+                {whatsappCliente && (
+                  <a
+                    href={whatsappCliente}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-block text-sm text-text underline underline-offset-4"
+                  >
+                    Conversar no WhatsApp
+                  </a>
+                )}
               </div>
             </div>
           </Card>
@@ -478,4 +490,4 @@ export function OrderDetailPage() {
       </div>
     </div>
   );
-}
+}

@@ -67,6 +67,17 @@ export const limiteCadastro = rateLimit({
   message: 'Muitos cadastros feitos desta rede. Tente de novo mais tarde.'
 });
 
+export const limiteRecuperacaoIp = rateLimit({
+  windowMs: 60 * minuto, max: 20,
+  message: 'Muitos pedidos de recuperação feitos desta rede. Tente de novo mais tarde.'
+});
+
+export const limiteRecuperacaoConta = rateLimit({
+  windowMs: 60 * minuto, max: 5,
+  key: req => `recuperacao|${emailDoCorpo(req)}`,
+  message: 'Já enviamos alguns links para este e-mail. Confira a caixa de entrada e o spam, ou tente de novo mais tarde.'
+});
+
 export const limiteCredenciais = rateLimit({
   windowMs: 15 * minuto, max: 10,
   key: req => req.userId ?? clientIp(req),

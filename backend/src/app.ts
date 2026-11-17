@@ -3,14 +3,7 @@ import cors from 'cors';
 import routes from './routes';
 import { errorHandler } from './middlewares/erroHandler';
 import { limiteGeral } from './middlewares/rateLimit';
-
-const producao = process.env.NODE_ENV === 'production';
-const origensPadrao = ['https://villacollab1.onrender.com',
-  ...(producao ? [] : ['http://localhost:5173', 'http://localhost:4173', 'http://127.0.0.1:5173'])];
-const origensPermitidas = new Set(
-  (process.env.CORS_ORIGINS ?? '').split(',').map(origem => origem.trim().replace(/\/+$/, '')).filter(Boolean)
-);
-if (origensPermitidas.size === 0) origensPadrao.forEach(origem => origensPermitidas.add(origem));
+import { origensPermitidas } from './config/origens';
 
 const app = express();
 app.disable('x-powered-by');
@@ -25,7 +18,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(cors({
-  origin: (origin, callback) => callback(null, !origin || origensPermitidas.has(origin)),
+  origin: (origin, callback) => callback(null, !origin || origensPermitidas().has(origin)),
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
   maxAge: 600

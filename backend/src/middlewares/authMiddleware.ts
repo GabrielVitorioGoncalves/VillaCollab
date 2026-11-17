@@ -17,6 +17,7 @@ declare global {
 const ROTAS_LIBERADAS_NA_TROCA_DE_SENHA = [
   /^GET \/api\/auth\/me$/,
   /^PATCH \/api\/auth\/senha$/,
+  /^POST \/api\/auth\/senha\/redefinir$/,
   /^POST \/api\/auth\/logout$/,
   /^(GET|POST) \/api\/auth\/mfa(\/[a-z]+)?$/
 ];
@@ -25,13 +26,19 @@ function tokenDaRequisicao(req: Request): string | null {
   return /^Bearer ([^\s]+)$/i.exec(req.headers.authorization ?? '')?.[1] ?? null;
 }
 
-export function nivelDoToken(token: string): 'aal1' | 'aal2' {
+type PayloadDoToken = { aal?: string; amr?: { method?: string; timestamp?: number }[] };
+
+export function payloadDoToken(token: string): PayloadDoToken {
   try {
     const payload = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'));
-    return payload?.aal === 'aal2' ? 'aal2' : 'aal1';
+    return payload && typeof payload === 'object' ? payload : {};
   } catch {
-    return 'aal1';
+    return {};
   }
+}
+
+export function nivelDoToken(token: string): 'aal1' | 'aal2' {
+  return payloadDoToken(token).aal === 'aal2' ? 'aal2' : 'aal1';
 }
 
 async function identificar(req: Request, token: string): Promise<boolean> {

@@ -39,6 +39,21 @@ export function register(nome: string, email: string, password: string, captchaT
   });
 }
 
+export function requestPasswordReset(email: string, captchaToken?: string) {
+  return apiRequest<{ mensagem: string }>("/auth/senha/recuperar", {
+    method: "POST",
+    body: { email, ...(captchaToken ? { captcha_token: captchaToken } : {}) },
+  });
+}
+
+export function resetPassword(linkToken: string, novaSenha: string, codigo?: string) {
+  return apiRequest<void>("/auth/senha/redefinir", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${linkToken}` },
+    body: { nova_senha: novaSenha, ...(codigo ? { codigo } : {}) },
+  });
+}
+
 export function getMfaStatus() {
   return apiRequest<MfaStatus>("/auth/mfa", { auth: true });
 }

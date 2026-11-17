@@ -2,7 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { createServiceClient, createSupabaseClient, requisicaoAuth, signOutSession, updateAuthUser } from '../config/supabase';
+import { origemConfiavel } from '../config/origens';
 import { rpcFailure } from '../errors/rpcFailure';
+import { payloadDoToken } from '../middlewares/authMiddleware';
 import { enderecoSchema } from '../schemas/catalogoSchema';
 
 const registerSchema = z.object({
@@ -30,15 +32,48 @@ const codigoMfaSchema = z.object({
   codigo: z.string().trim().regex(/^\d{6}$/, 'Digite os 6 números do aplicativo')
 }).strict();
 
+const recuperarSenhaSchema = z.object({ email: z.email() }).strict();
+const redefinirSenhaSchema = z.object({
+  nova_senha: z.string().min(8).max(128),
+  codigo: z.string().trim().regex(/^\d{6}$/, 'Digite os 6 números do aplicativo').optional()
+}).strict();
+
+const METODOS_DO_LINK_POR_EMAIL = new Set(['otp', 'recovery', 'magiclink']);
+const VALIDADE_DO_LINK_EM_SEGUNDOS = 60 * 60;
+
 const profileColumns = 'id, nome, role, loja_id, telefone, endereco';
 
 type Fator = { id: string; factor_type: string; status: string };
+type SessaoAuth = { access_token?: string; refresh_token?: string; expires_at?: number };
 
 async function fatoresDoUsuario(accessToken: string): Promise<Fator[]> {
   const resposta = await requisicaoAuth(accessToken, 'GET', '/user');
   if (!resposta.ok) throw new Error('Não foi possível consultar a verificação em duas etapas');
   const fatores = (resposta.dados as { factors?: Fator[] } | null)?.factors ?? [];
   return fatores.filter(fator => fator.factor_type === 'totp');
+}
+
+async function validarCodigoMfa(accessToken: string, fatorId: string, codigo: string):
+  Promise<{ sessao: SessaoAuth } | { status: number; erro: string }> {
+  const desafio = await requisicaoAuth(accessToken, 'POST', `/factors/${fatorId}/challenge`, {});
+  const desafioId = (desafio.dados as { id?: string } | null)?.id;
+  if (!desafio.ok || !desafioId) return { status: 502, erro: 'Não foi possível validar o código agora' };
+  const verificacao = await requisicaoAuth(accessToken, 'POST', `/factors/${fatorId}/verify`, {
+    challenge_id: desafioId, code: codigo
+  });
+  const sessao = verificacao.dados as SessaoAuth | null;
+  if (!verificacao.ok || !sessao?.access_token) {
+    return { status: 400, erro: 'Código inválido. Confira se o horário do celular está certo e tente de novo.' };
+  }
+  return { sessao };
+}
+
+function veioDoLinkPorEmail(accessToken: string): boolean {
+  const agora = Math.floor(Date.now() / 1000);
+  return (payloadDoToken(accessToken).amr ?? []).some(item =>
+    METODOS_DO_LINK_POR_EMAIL.has(item.method ?? '')
+    && typeof item.timestamp === 'number'
+    && agora - item.timestamp <= VALIDADE_DO_LINK_EM_SEGUNDOS);
 }
 
 async function confirmPassword(email: string, password: string): Promise<boolean> {
@@ -219,19 +254,60 @@ export class AuthController {
         ? fatores.find(item => item.id === fator_id)
         : fatores.find(item => item.status === 'verified');
       if (!fator) { res.status(404).json({ erro: 'Verificação em duas etapas não encontrada' }); return; }
-      const desafio = await requisicaoAuth(req.accessToken!, 'POST', `/factors/${fator.id}/challenge`, {});
-      const desafioId = (desafio.dados as { id?: string } | null)?.id;
-      if (!desafio.ok || !desafioId) {
-        res.status(502).json({ erro: 'Não foi possível validar o código agora' }); return;
-      }
-      const verificacao = await requisicaoAuth(req.accessToken!, 'POST', `/factors/${fator.id}/verify`, {
-        challenge_id: desafioId, code: codigo
-      });
-      const sessao = verificacao.dados as { access_token?: string; refresh_token?: string; expires_at?: number } | null;
-      if (!verificacao.ok || !sessao?.access_token) {
-        res.status(400).json({ erro: 'Código inválido. Confira se o horário do celular está certo e tente de novo.' }); return;
-      }
+      const resultado = await validarCodigoMfa(req.accessToken!, fator.id, codigo);
+      if ('erro' in resultado) { res.status(resultado.status).json({ erro: resultado.erro }); return; }
+      const { sessao } = resultado;
       res.json({ access_token: sessao.access_token, refresh_token: sessao.refresh_token, expires_at: sessao.expires_at });
+    } catch (error) { next(error); }
+  }
+
+  async recuperarSenha(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { email } = recuperarSenhaSchema.parse(req.body);
+      const origem = origemConfiavel(req.get('origin'));
+      const { error } = await createSupabaseClient().auth.resetPasswordForEmail(email,
+        origem ? { redirectTo: `${origem}/redefinir-senha` } : undefined);
+      if (error && (error.status ?? 500) >= 500) {
+        res.status(503).json({ erro: 'Não foi possível enviar o e-mail agora. Tente de novo em alguns minutos.' });
+        return;
+      }
+      res.status(202).json({
+        mensagem: 'Se existir uma conta com este e-mail, enviamos um link para criar uma nova senha.'
+      });
+    } catch (error) { next(error); }
+  }
+
+  async redefinirSenha(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { nova_senha, codigo } = redefinirSenhaSchema.parse(req.body);
+      if (!veioDoLinkPorEmail(req.accessToken!)) {
+        res.status(403).json({ erro: 'Este link não vale mais. Peça um novo link de recuperação.' }); return;
+      }
+      let token = req.accessToken!;
+      if (req.mfaCadastrado && req.nivelAcesso !== 'aal2') {
+        if (!codigo) {
+          res.status(403).json({ erro: 'Digite o código do aplicativo autenticador para continuar.', codigo: 'mfa_codigo' });
+          return;
+        }
+        const fator = (await fatoresDoUsuario(token)).find(item => item.status === 'verified');
+        if (!fator) { res.status(404).json({ erro: 'Verificação em duas etapas não encontrada' }); return; }
+        const resultado = await validarCodigoMfa(token, fator.id, codigo);
+        if ('erro' in resultado) { res.status(resultado.status).json({ erro: resultado.erro }); return; }
+        token = resultado.sessao.access_token!;
+      }
+      const result = await updateAuthUser(token, { password: nova_senha });
+      if (!result.ok) {
+        res.status(400).json({ erro: result.status === 422
+          ? 'A nova senha precisa ser diferente da anterior'
+          : 'Não foi possível alterar a senha. Peça um novo link e tente de novo.' });
+        return;
+      }
+      if (req.trocarSenha) {
+        const service = createServiceClient();
+        if (service) await service.auth.admin.updateUserById(req.userId!, { app_metadata: { trocar_senha: false } });
+      }
+      await signOutSession(token, 'global').catch(() => undefined);
+      res.status(204).end();
     } catch (error) { next(error); }
   }
 
