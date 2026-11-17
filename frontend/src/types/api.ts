@@ -42,6 +42,7 @@ export interface Usuario {
   email?: string | null;
   telefone?: string | null;
   endereco?: Endereco | null;
+  trocar_senha?: boolean;
 }
 
 export interface Loja {
@@ -127,6 +128,31 @@ export interface LoginResponse {
   refresh_token: string;
   expires_at: number;
   usuario: Usuario;
+  mfa?: { necessario: boolean; cadastro_necessario: boolean };
+}
+
+export interface MfaStatus {
+  nivel: "aal1" | "aal2";
+  cadastrado: boolean;
+}
+
+export interface MfaCadastro {
+  fator_id: string;
+  qr_code: string;
+  segredo: string;
+}
+
+export interface SessaoMfa {
+  access_token: string;
+  refresh_token?: string;
+  expires_at?: number;
+}
+
+export interface PaginaDePedidos {
+  itens: Pedido[];
+  total: number;
+  pagina: number;
+  por_pagina: number;
 }
 
 export interface RegisterResponse {

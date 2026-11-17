@@ -5,6 +5,7 @@ const { once } = require('node:events');
 const usuario = '33333333-3333-4333-8333-333333333333';
 const lojaA = '11111111-1111-4111-8111-111111111111';
 const produto = '55555555-5555-4555-8555-555555555555';
+const TOKEN = `cabecalho.${Buffer.from(JSON.stringify({ aal: 'aal2' })).toString('base64url')}.assinatura`;
 let state;
 let server;
 let base;
@@ -58,7 +59,7 @@ beforeEach(() => {
 async function request(path, { method = 'GET', body, headers = {} } = {}) {
   const response = await fetch(base + path, {
     method,
-    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), Authorization: 'Bearer jwt', ...headers },
+    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${TOKEN}`, ...headers },
     body: body ? JSON.stringify(body) : undefined
   });
   const text = await response.text();

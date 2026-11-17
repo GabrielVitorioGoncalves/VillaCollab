@@ -57,8 +57,8 @@ export class ProdutoService {
     return { status: 'updated' as const, produto: atualizado };
   }
 
-  async buscarProdutoPorId(id: string) {
-    const { data, error } = await supabase
+  async buscarProdutoPorId(id: string, accessToken?: string) {
+    const { data, error } = await (accessToken ? createSupabaseClient(accessToken) : supabase)
       .from('produtos')
       .select('*')
       .eq('id', id)

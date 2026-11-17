@@ -55,3 +55,11 @@ export function formatShortDate(iso: string): string {
 export function isUuid(value: string | undefined): value is string {
   return !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
+
+export const HORAS_PARA_CONFIRMAR = 48;
+
+export function prazoDeConfirmacao(criadoEm: string): string {
+  const inicio = new Date(criadoEm).getTime();
+  if (Number.isNaN(inicio)) return "";
+  return formatDateTime(new Date(inicio + HORAS_PARA_CONFIRMAR * 3600 * 1000).toISOString());
+}

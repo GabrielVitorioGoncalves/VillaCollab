@@ -34,6 +34,8 @@ import { AdminStoresPage } from "./pages/admin/adminStores";
 import { AdminStoreFormPage } from "./pages/admin/adminStoreForm";
 import { AdminUsersPage } from "./pages/admin/adminUsers";
 import { AdminAccountFormPage } from "./pages/admin/adminAccountForm";
+import { NewPasswordPage } from "./pages/account/newPassword";
+import { TwoFactorPage } from "./pages/account/twoFactor";
 
 function App() {
   return (
@@ -82,6 +84,9 @@ function App() {
             <Route path="/admin/usuarios" element={<AdminUsersPage />} />
             <Route path="/admin/administradores/novo" element={<AdminAccountFormPage />} />
           </Route>
+
+          <Route path="/conta/nova-senha" element={<NewPasswordPage />} />
+          <Route path="/conta/verificacao" element={<TwoFactorPage />} />
 
           <Route path="*" element={<Navigate to="/user/home" replace />} />
         </Routes>

@@ -2,14 +2,16 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { createSupabaseClient } from '../config/supabase';
 import { rpcFailure } from '../errors/rpcFailure';
+import { adminComMfa } from '../middlewares/authMiddleware';
 
 const params = z.object({ id: z.uuid() });
 const body = z.object({ role: z.enum(['lojista', 'cliente']), loja_id: z.uuid().nullable() }).strict()
   .refine(value => (value.role === 'lojista') === (value.loja_id !== null),
     'Lojista precisa de loja; cliente não pode ter loja');
 
-function gereUsuarios(actor: { role?: string; admin_permissoes?: string[] | null } | null) {
-  return actor?.role === 'admin' && (!actor.admin_permissoes || actor.admin_permissoes.includes('usuarios'));
+function gereUsuarios(actor: { role?: string; admin_permissoes?: string[] | null } | null, req: Request) {
+  return actor?.role === 'admin' && adminComMfa(req)
+    && (!actor.admin_permissoes || actor.admin_permissoes.includes('usuarios'));
 }
 
 export class UsuarioController {
@@ -19,7 +21,7 @@ export class UsuarioController {
       const { data: actor, error: actorError } = await client.from('usuarios')
         .select('role, admin_permissoes').eq('id', req.userId!).maybeSingle();
       if (actorError) throw actorError;
-      if (!gereUsuarios(actor)) { res.status(403).json({ erro: 'Sem permissão' }); return; }
+      if (!gereUsuarios(actor, req)) { res.status(403).json({ erro: 'Sem permissão' }); return; }
       const { data, error } = await client.from('usuarios')
         .select('id, nome, role, loja_id').order('nome');
       if (error) throw error;
@@ -35,7 +37,7 @@ export class UsuarioController {
       const { data: actor, error: actorError } = await client.from('usuarios')
         .select('role, admin_permissoes').eq('id', req.userId!).maybeSingle();
       if (actorError) throw actorError;
-      if (!gereUsuarios(actor)) { res.status(403).json({ erro: 'Sem permissão' }); return; }
+      if (!gereUsuarios(actor, req)) { res.status(403).json({ erro: 'Sem permissão' }); return; }
       const { data: target, error: targetError } = await client.from('usuarios')
         .select('role').eq('id', id).maybeSingle();
       if (targetError) throw targetError;

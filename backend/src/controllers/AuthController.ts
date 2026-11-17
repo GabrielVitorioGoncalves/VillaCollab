@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
+import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import { createSupabaseClient, signOutSession, updateAuthUser } from '../config/supabase';
+import { createServiceClient, createSupabaseClient, requisicaoAuth, signOutSession, updateAuthUser } from '../config/supabase';
 import { rpcFailure } from '../errors/rpcFailure';
 import { enderecoSchema } from '../schemas/catalogoSchema';
 
@@ -23,7 +24,22 @@ const passwordSchema = z.object({
   nova_senha: z.string().min(8).max(128)
 }).strict();
 
+const excluirContaSchema = z.object({ senha_atual: z.string().min(1).max(128) }).strict();
+const codigoMfaSchema = z.object({
+  fator_id: z.uuid().optional(),
+  codigo: z.string().trim().regex(/^\d{6}$/, 'Digite os 6 números do aplicativo')
+}).strict();
+
 const profileColumns = 'id, nome, role, loja_id, telefone, endereco';
+
+type Fator = { id: string; factor_type: string; status: string };
+
+async function fatoresDoUsuario(accessToken: string): Promise<Fator[]> {
+  const resposta = await requisicaoAuth(accessToken, 'GET', '/user');
+  if (!resposta.ok) throw new Error('Não foi possível consultar a verificação em duas etapas');
+  const fatores = (resposta.dados as { factors?: Fator[] } | null)?.factors ?? [];
+  return fatores.filter(fator => fator.factor_type === 'totp');
+}
 
 async function confirmPassword(email: string, password: string): Promise<boolean> {
   const { data, error } = await createSupabaseClient().auth.signInWithPassword({ email, password });
@@ -68,9 +84,11 @@ export class AuthController {
         res.status(503).json({ erro: 'Perfil indisponível' });
         return;
       }
+      const mfaCadastrado = (data.user.factors ?? []).some(fator => fator.status === 'verified');
       res.json({ access_token: data.session.access_token,
         refresh_token: data.session.refresh_token, expires_at: data.session.expires_at,
-        usuario: { ...perfil, email: data.user.email ?? email } });
+        usuario: { ...perfil, email: data.user.email ?? email, trocar_senha: data.user.app_metadata?.trocar_senha === true },
+        mfa: { necessario: mfaCadastrado, cadastro_necessario: perfil.role === 'admin' && !mfaCadastrado } });
     } catch (error) { next(error); }
   }
 
@@ -136,9 +154,19 @@ export class AuthController {
       }
       const result = await updateAuthUser(req.accessToken!, { password: nova_senha });
       if (!result.ok) {
-        res.status(400).json({ erro: 'Não foi possível alterar a senha' }); return;
+        res.status(400).json({ erro: result.status === 422
+          ? 'A nova senha precisa ser diferente da atual'
+          : 'Não foi possível alterar a senha' });
+        return;
       }
       await signOutSession(req.accessToken!, 'others').catch(() => undefined);
+      if (req.trocarSenha) {
+        const service = createServiceClient();
+        const { error } = service
+          ? await service.auth.admin.updateUserById(req.userId!, { app_metadata: { trocar_senha: false } })
+          : { error: new Error('sem chave de serviço') };
+        if (error) { res.status(503).json({ erro: 'A senha foi trocada, mas não foi possível liberar a conta. Tente entrar de novo.' }); return; }
+      }
       res.status(204).end();
     } catch (error) { next(error); }
   }
@@ -146,6 +174,99 @@ export class AuthController {
   async logout(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       await signOutSession(req.accessToken!, 'local');
+      res.status(204).end();
+    } catch (error) { next(error); }
+  }
+
+  async mfaStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const fatores = await fatoresDoUsuario(req.accessToken!);
+      res.json({
+        nivel: req.nivelAcesso ?? 'aal1',
+        cadastrado: fatores.some(fator => fator.status === 'verified')
+      });
+    } catch (error) { next(error); }
+  }
+
+  async mfaCadastro(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const fatores = await fatoresDoUsuario(req.accessToken!);
+      if (fatores.some(fator => fator.status === 'verified')) {
+        res.status(409).json({ erro: 'A verificação em duas etapas já está ativa nesta conta' }); return;
+      }
+      for (const fator of fatores) {
+        await requisicaoAuth(req.accessToken!, 'DELETE', `/factors/${fator.id}`);
+      }
+      const resposta = await requisicaoAuth(req.accessToken!, 'POST', '/factors', {
+        factor_type: 'totp', friendly_name: `Villa Collab ${Date.now()}`, issuer: 'Villa Collab'
+      });
+      const dados = resposta.dados as { id?: string; totp?: { qr_code?: string; secret?: string } } | null;
+      if (!resposta.ok || !dados?.id || !dados.totp?.qr_code || !dados.totp.secret) {
+        res.status(502).json({ erro: 'Não foi possível iniciar a verificação em duas etapas' }); return;
+      }
+      const qrCode = dados.totp.qr_code.startsWith('data:')
+        ? dados.totp.qr_code
+        : `data:image/svg+xml;utf-8,${encodeURIComponent(dados.totp.qr_code)}`;
+      res.status(201).json({ fator_id: dados.id, qr_code: qrCode, segredo: dados.totp.secret });
+    } catch (error) { next(error); }
+  }
+
+  async mfaVerificar(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { fator_id, codigo } = codigoMfaSchema.parse(req.body);
+      const fatores = await fatoresDoUsuario(req.accessToken!);
+      const fator = fator_id
+        ? fatores.find(item => item.id === fator_id)
+        : fatores.find(item => item.status === 'verified');
+      if (!fator) { res.status(404).json({ erro: 'Verificação em duas etapas não encontrada' }); return; }
+      const desafio = await requisicaoAuth(req.accessToken!, 'POST', `/factors/${fator.id}/challenge`, {});
+      const desafioId = (desafio.dados as { id?: string } | null)?.id;
+      if (!desafio.ok || !desafioId) {
+        res.status(502).json({ erro: 'Não foi possível validar o código agora' }); return;
+      }
+      const verificacao = await requisicaoAuth(req.accessToken!, 'POST', `/factors/${fator.id}/verify`, {
+        challenge_id: desafioId, code: codigo
+      });
+      const sessao = verificacao.dados as { access_token?: string; refresh_token?: string; expires_at?: number } | null;
+      if (!verificacao.ok || !sessao?.access_token) {
+        res.status(400).json({ erro: 'Código inválido. Confira se o horário do celular está certo e tente de novo.' }); return;
+      }
+      res.json({ access_token: sessao.access_token, refresh_token: sessao.refresh_token, expires_at: sessao.expires_at });
+    } catch (error) { next(error); }
+  }
+
+  async excluirConta(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { senha_atual } = excluirContaSchema.parse(req.body);
+      if (!req.userEmail) { res.status(400).json({ erro: 'Conta sem e-mail' }); return; }
+      const service = createServiceClient();
+      if (!service) { res.status(503).json({ erro: 'A exclusão de conta está indisponível no momento' }); return; }
+      if (!(await confirmPassword(req.userEmail, senha_atual))) {
+        res.status(400).json({ erro: 'Senha atual incorreta' }); return;
+      }
+      const { data: tinhaPedidos, error } = await createSupabaseClient(req.accessToken).rpc('anonimizar_minha_conta');
+      if (error) {
+        if (/^VC_FORBIDDEN: admin/.test(error.message)) {
+          res.status(403).json({ erro: 'Contas de administrador são removidas por outro administrador' }); return;
+        }
+        if (/^VC_FORBIDDEN: lojista/.test(error.message)) {
+          res.status(403).json({ erro: 'Contas de lojista são encerradas pela administração da plataforma. Fale com o suporte.' }); return;
+        }
+        if (rpcFailure(error, res, {
+          CONFLICT: 'Você tem pedidos em andamento. Aguarde a entrega ou cancele os pedidos antes de excluir a conta.'
+        })) return;
+        throw error;
+      }
+      const resultado = tinhaPedidos
+        ? await service.auth.admin.updateUserById(req.userId!, {
+          email: `removido.${req.userId}@conta-removida.invalid`,
+          password: randomBytes(32).toString('hex'),
+          email_confirm: true,
+          ban_duration: '876000h',
+          user_metadata: {}
+        })
+        : await service.auth.admin.deleteUser(req.userId!);
+      if (resultado.error) throw new Error('Falha ao remover o acesso da conta');
       res.status(204).end();
     } catch (error) { next(error); }
   }

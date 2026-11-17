@@ -16,8 +16,8 @@ import {
   type AddressForm,
 } from "../../lib/address";
 import { errorMessage } from "../../lib/api";
-import { changeEmail, changePassword, getMe, updateMe } from "../../lib/services";
-import { getSession, updateSessionUser } from "../../lib/session";
+import { changeEmail, changePassword, deleteAccount, getMe, updateMe } from "../../lib/services";
+import { clearSession, getSession, updateSessionUser } from "../../lib/session";
 import type { Usuario } from "../../types/api";
 
 function initials(name: string) {
@@ -30,6 +30,80 @@ function initials(name: string) {
 interface Feedback {
   type: "success" | "error";
   text: string;
+}
+
+function DeleteAccountCard({ role, onDeleted }: { role?: Usuario["role"]; onDeleted: () => void }) {
+  const [aberto, setAberto] = useState(false);
+  const [senha, setSenha] = useState("");
+  const [erro, setErro] = useState("");
+  const [excluindo, setExcluindo] = useState(false);
+
+  async function excluir() {
+    if (!senha || excluindo) return;
+    setExcluindo(true);
+    setErro("");
+    try {
+      await deleteAccount(senha);
+      onDeleted();
+    } catch (caught) {
+      setErro(errorMessage(caught));
+      setExcluindo(false);
+    }
+  }
+
+  return (
+    <Card className="p-6">
+      <h2 className="text-lg font-semibold text-text">Excluir minha conta</h2>
+      {role !== "cliente" ? (
+        <p className="mt-2 text-sm text-text-secondary">
+          {role === "lojista"
+            ? "Contas de lojista são encerradas pela administração da plataforma. Fale com o suporte."
+            : "Contas de administrador são removidas por outro administrador."}
+        </p>
+      ) : (
+        <>
+          <p className="mt-2 text-sm text-text-secondary">
+            Apagamos seu nome, telefone, endereços e comentários, e você não consegue mais entrar. Pedidos já
+            concluídos continuam no histórico das lojas, sem seus dados pessoais. Quem tem pedido em andamento
+            precisa esperar a entrega ou cancelar antes.
+          </p>
+          {!aberto ? (
+            <Button variant="outline" className="mt-4" onClick={() => setAberto(true)}>
+              Quero excluir minha conta
+            </Button>
+          ) : (
+            <div className="mt-5 space-y-4">
+              <FormField label="Confirme sua senha" required>
+                <Input
+                  type="password"
+                  value={senha}
+                  autoComplete="current-password"
+                  onChange={(event) => setSenha(event.target.value)}
+                />
+              </FormField>
+              {erro && <p role="alert" className="text-sm text-danger">{erro}</p>}
+              <div className="flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  disabled={excluindo}
+                  onClick={() => {
+                    setAberto(false);
+                    setSenha("");
+                    setErro("");
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button variant="danger" disabled={excluindo || !senha} onClick={excluir}>
+                  {excluindo ? "Excluindo..." : "Excluir definitivamente"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
 }
 
 function FeedbackText({ feedback }: { feedback: Feedback | null }) {
@@ -708,6 +782,14 @@ export function ProfilePage() {
 
               <FeedbackText feedback={passwordFeedback} />
             </Card>
+
+            <DeleteAccountCard
+              role={user?.role}
+              onDeleted={() => {
+                clearSession();
+                navigate("/user/home", { replace: true });
+              }}
+            />
           </div>
         </div>
         )}

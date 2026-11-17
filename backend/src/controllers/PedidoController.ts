@@ -33,6 +33,10 @@ const createSchema = z.object({
 
 const statusSchema = z.object({ status: z.enum(['aceito', 'enviado', 'concluido', 'cancelado']) }).strict();
 const idempotencySchema = z.uuid().optional();
+const paginaSchema = z.object({
+  pagina: z.coerce.number().int().min(1).max(10000).optional(),
+  por_pagina: z.coerce.number().int().min(1).max(50).optional()
+});
 const select = 'id, usuario_id, loja_id, status, total, created_at, updated_at, endereco_entrega, forma_pagamento, parcelas, '
   + 'itens_pedido(id, produto_id, quantidade, preco_unitario, subtotal, variacoes)';
 
@@ -50,6 +54,9 @@ export class PedidoController {
         ...(parcelas !== undefined ? { p_parcelas: parcelas } : {}),
         ...(chave ? { p_chave: chave } : {})
       });
+      if (error && /^VC_FORBIDDEN: propria/.test(error.message)) {
+        res.status(403).json({ erro: 'Você não pode comprar na sua própria loja' }); return;
+      }
       if (error) { if (rpcFailure(error, res)) return; throw error; }
       const { data, error: readError } = await client.from('pedidos').select(select).eq('id', id).maybeSingle();
       if (readError || !data) throw readError ?? new Error('Pedido criado, mas não disponível para leitura');
@@ -59,10 +66,21 @@ export class PedidoController {
 
   async mine(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { data, error } = await createSupabaseClient(req.accessToken).from('pedidos')
-        .select(select).eq('usuario_id', req.userId!).order('created_at', { ascending: false });
+      const { pagina, por_pagina: porPagina = 20 } = paginaSchema.parse(req.query);
+      const client = createSupabaseClient(req.accessToken);
+      if (!pagina) {
+        const { data, error } = await client.from('pedidos')
+          .select(select).eq('usuario_id', req.userId!).order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json(data ?? []);
+        return;
+      }
+      const inicio = (pagina - 1) * porPagina;
+      const { data, error, count } = await client.from('pedidos')
+        .select(select, { count: 'exact' }).eq('usuario_id', req.userId!)
+        .order('created_at', { ascending: false }).order('id').range(inicio, inicio + porPagina - 1);
       if (error) throw error;
-      res.json(data ?? []);
+      res.json({ itens: data ?? [], total: count ?? 0, pagina, por_pagina: porPagina });
     } catch (error) { next(error); }
   }
 
