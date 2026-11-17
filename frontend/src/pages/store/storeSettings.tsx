@@ -18,7 +18,6 @@ export function StoreSettings() {
   const { loja, setLoja } = useStore();
   const [acceptOrders, setAcceptOrders] = useState(loja.aceita_pedidos ?? true);
   const [showStock, setShowStock] = useState(loja.exibir_estoque ?? true);
-  const [emailNotifications, setEmailNotifications] = useState(loja.notificacoes?.email ?? true);
   const [orderNotifications, setOrderNotifications] = useState(loja.notificacoes?.pedidos ?? true);
   const [lowStockNotifications, setLowStockNotifications] = useState(loja.notificacoes?.estoque_baixo ?? false);
   const [autoConfirm, setAutoConfirm] = useState(loja.confirmar_automaticamente ?? false);
@@ -53,7 +52,7 @@ export function StoreSettings() {
         prazo_preparo_dias: prazo ? Number(prazo) : null,
         pedido_minimo: Number(minimo),
         notificacoes: {
-          email: emailNotifications,
+          email: loja.notificacoes?.email ?? true,
           pedidos: orderNotifications,
           estoque_baixo: lowStockNotifications,
         },
@@ -217,16 +216,6 @@ export function StoreSettings() {
 
           <div className="divide-y divide-border">
             <SettingToggle
-              title="Notificações por e-mail"
-              description="A preferência fica salva. O envio de e-mails ainda não está configurado no servidor."
-              checked={emailNotifications}
-              onChange={(value) => {
-                setEmailNotifications(value);
-                setSaved(false);
-              }}
-            />
-
-            <SettingToggle
               title="Atualizações de pedidos"
               description="Mostra no painel um aviso dos pedidos que aguardam sua confirmação."
               checked={orderNotifications}
@@ -319,4 +308,4 @@ function toggleClassName(checked: boolean) {
   return `relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
     checked ? "bg-primary" : "bg-zinc-300"
   }`;
-}
+}

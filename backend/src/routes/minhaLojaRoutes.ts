@@ -7,6 +7,7 @@ const router = Router();
 const controller = new MinhaLojaController();
 router.use(authMiddleware);
 router.get('/', controller.loja);
+router.get('/resumo', controller.resumo);
 router.get('/produtos', controller.produtos);
 router.get('/produtos/:id', controller.produto);
 router.get('/pedidos', controller.pedidos);

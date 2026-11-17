@@ -271,6 +271,7 @@ function ProductEditor({ product }: { product?: Produto }) {
     }
     if (!/^\d+$/.test(form.stock.trim())) return setError("O estoque precisa ser um número inteiro (0 ou mais).");
     const stock = Number(form.stock);
+    if (stock > 1000000) return setError("O estoque pode ter no máximo 1.000.000 unidades.");
 
     setSaving(true);
     setError("");

@@ -15,7 +15,9 @@ import type {
   Loja,
   MfaCadastro,
   MfaStatus,
+  Pagina,
   PaginaDePedidos,
+  ResumoLoja,
   SessaoMfa,
   Pedido,
   Produto,
@@ -113,6 +115,18 @@ export function listStores() {
   return apiRequest<Loja[]>("/lojas");
 }
 
+export function consulta(parametros: Record<string, string | number | undefined>) {
+  const busca = new URLSearchParams();
+  for (const [chave, valor] of Object.entries(parametros)) {
+    if (valor !== undefined && valor !== "") busca.set(chave, String(valor));
+  }
+  return busca.toString();
+}
+
+export function listStoresPage(pagina: number, porPagina: number, busca?: string) {
+  return apiRequest<Pagina<Loja>>(`/lojas?${consulta({ pagina, por_pagina: porPagina, busca })}`);
+}
+
 export function getStore(id: string) {
   return apiRequest<Loja>(`/lojas/${encodeURIComponent(id)}`, { auth: "optional" });
 }
@@ -200,16 +214,25 @@ export function getMyStore() {
   return apiRequest<MinhaLoja>("/minha-loja", { auth: true });
 }
 
-export function listMyProducts() {
-  return apiRequest<Produto[]>("/minha-loja/produtos", { auth: true });
+export function listMyProductsPage(pagina: number, porPagina: number, busca?: string) {
+  return apiRequest<Pagina<Produto>>(`/minha-loja/produtos?${consulta({ pagina, por_pagina: porPagina, busca })}`, {
+    auth: true,
+  });
+}
+
+export function getMyStoreSummary() {
+  return apiRequest<ResumoLoja>("/minha-loja/resumo", { auth: true });
 }
 
 export function getMyProduct(id: string) {
   return apiRequest<Produto>(`/minha-loja/produtos/${encodeURIComponent(id)}`, { auth: true });
 }
 
-export function listStoreOrders() {
-  return apiRequest<PedidoLoja[]>("/minha-loja/pedidos", { auth: true });
+export function listStoreOrdersPage(pagina: number, porPagina: number, busca?: string, status?: PedidoStatus) {
+  return apiRequest<Pagina<PedidoLoja>>(
+    `/minha-loja/pedidos?${consulta({ pagina, por_pagina: porPagina, busca, status })}`,
+    { auth: true }
+  );
 }
 
 export function getStoreOrder(id: string) {

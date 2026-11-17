@@ -8,11 +8,15 @@ import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Badge } from "../../components/ui/badge";
+import { Pagination } from "../../components/marketplace/pagination";
 import { RequestStatus } from "../../components/ui/requestStatus";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useRequest } from "../../hooks/useRequest";
 import { formatCurrency, toNumber } from "../../lib/format";
 import { errorMessage } from "../../lib/api";
-import { listMyProducts, updateProduct } from "../../lib/services";
+import { getMyStoreSummary, listMyProductsPage, updateProduct } from "../../lib/services";
+
+const PRODUTOS_POR_PAGINA = 20;
 
 type ProductStatus = "Ativo" | "Sem estoque" | "Inativo";
 
@@ -27,7 +31,15 @@ export function Products() {
   const [search, setSearch] = useState("");
   const location = useLocation();
   const notice = (location.state as { notice?: string } | null)?.notice;
-  const request = useRequest("meus-produtos", listMyProducts);
+  const busca = useDebouncedValue(search.trim());
+  const [paginaAtual, setPaginaAtual] = useState({ busca, pagina: 1 });
+  const pagina = paginaAtual.busca === busca ? paginaAtual.pagina : 1;
+  const request = useRequest(
+    `meus-produtos:${busca}:${pagina}`,
+    () => listMyProductsPage(pagina, PRODUTOS_POR_PAGINA, busca),
+    { manterAnterior: true }
+  );
+  const resumo = useRequest("resumo-loja", getMyStoreSummary);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
 
@@ -37,7 +49,11 @@ export function Products() {
     setActionError("");
     try {
       const updated = await updateProduct(id, { ativo });
-      request.mutate(request.data.map((produto) => (produto.id === id ? { ...produto, ...updated } : produto)));
+      request.mutate({
+        ...request.data,
+        itens: request.data.itens.map((produto) => (produto.id === id ? { ...produto, ...updated } : produto)),
+      });
+      resumo.reload();
     } catch (caught) {
       setActionError(errorMessage(caught));
     } finally {
@@ -47,7 +63,7 @@ export function Products() {
 
   const products = useMemo(
     () =>
-      (request.data ?? []).map((produto) => ({
+      (request.data?.itens ?? []).map((produto) => ({
         id: produto.id,
         name: produto.nome,
         category: produto.categoria ?? "—",
@@ -64,27 +80,12 @@ export function Products() {
     [request.data]
   );
 
-  const filteredProducts = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-
-    return products.filter((product) => {
-      return (
-        product.name.toLowerCase().includes(normalizedSearch) ||
-        product.category.toLowerCase().includes(normalizedSearch) ||
-        product.id.toLowerCase().includes(normalizedSearch)
-      );
-    });
-  }, [products, search]);
-
-  const totalProducts = products.length;
-
-  const activeProducts = products.filter(
-    (product) => product.status === "Ativo" && product.stock > 0,
-  ).length;
-
-  const outOfStockProducts = products.filter(
-    (product) => product.stock <= 0,
-  ).length;
+  const filteredProducts = products;
+  const totalProducts = resumo.data?.produtos.total ?? 0;
+  const activeProducts = resumo.data?.produtos.ativos ?? 0;
+  const outOfStockProducts = resumo.data?.produtos.sem_estoque ?? 0;
+  const totalEncontrados = request.data?.total ?? 0;
+  const totalPaginas = Math.max(1, Math.ceil(totalEncontrados / PRODUTOS_POR_PAGINA));
 
   if (!request.data) {
     return (
@@ -119,6 +120,12 @@ export function Products() {
       {notice && (
         <p role="status" className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
           {notice}
+        </p>
+      )}
+
+      {request.error && (
+        <p role="alert" className="text-sm text-danger">
+          {request.error}
         </p>
       )}
 
@@ -278,9 +285,9 @@ export function Products() {
                     colSpan={6}
                     className="px-4 py-10 text-center text-sm text-text-secondary"
                   >
-                    {totalProducts === 0
-                      ? "Nenhum produto cadastrado ainda. Use \"Novo produto\" para começar."
-                      : `Nenhum produto encontrado para "${search}".`}
+                    {busca
+                      ? `Nenhum produto encontrado para "${busca}".`
+                      : "Nenhum produto cadastrado ainda. Use \"Novo produto\" para começar."}
                   </td>
                 </tr>
               )}
@@ -288,8 +295,11 @@ export function Products() {
           </table>
         </div>
 
-        <div className="mt-4 border-t border-border pt-4 text-sm text-text-secondary">
-          Exibindo {filteredProducts.length} de {totalProducts} produtos
+        <div className="mt-4 flex flex-col gap-4 border-t border-border pt-4 text-sm text-text-secondary">
+          <span>
+            Exibindo {filteredProducts.length} de {totalEncontrados} {busca ? "encontrados" : "produtos"}
+          </span>
+          <Pagination currentPage={pagina} totalPages={totalPaginas} onPageChange={(nova) => setPaginaAtual({ busca, pagina: nova })} />
         </div>
       </Card>
     </div>

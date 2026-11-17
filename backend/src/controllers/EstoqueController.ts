@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createSupabaseClient } from '../config/supabase';
 
 const params = z.object({ id: z.uuid() });
-const body = z.object({ estoque: z.number().int().min(0).max(2147483647) }).strict();
+const body = z.object({ estoque: z.number().int().min(0).max(1000000) }).strict();
 
 export class EstoqueController {
   async update(req: Request, res: Response, next: NextFunction): Promise<void> {

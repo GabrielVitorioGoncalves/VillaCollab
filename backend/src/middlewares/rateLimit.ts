@@ -10,6 +10,8 @@ type Options = {
 
 type Entry = { count: number; reset: number };
 
+const MAXIMO_DE_CHAVES = 50000;
+
 export function clientIp(req: Request): string {
   const cloudflare = req.get('cf-connecting-ip')?.trim();
   if (cloudflare && isIP(cloudflare)) return cloudflare;
@@ -29,6 +31,10 @@ export function rateLimit({ windowMs, max, key, message }: Options) {
     const id = key ? key(req) : clientIp(req);
     let entry = hits.get(id);
     if (!entry || entry.reset <= now) {
+      if (!entry && hits.size >= MAXIMO_DE_CHAVES) {
+        const maisAntiga = hits.keys().next().value;
+        if (maisAntiga !== undefined) hits.delete(maisAntiga);
+      }
       entry = { count: 0, reset: now + windowMs };
       hits.set(id, entry);
     }
@@ -59,6 +65,12 @@ export const limiteLoginIp = rateLimit({
 export const limiteLoginConta = rateLimit({
   windowMs: 15 * minuto, max: 10,
   key: req => `${clientIp(req)}|${emailDoCorpo(req)}`,
+  message: 'Muitas tentativas de login para esta conta. Aguarde alguns minutos e tente de novo.'
+});
+
+export const limiteLoginEmail = rateLimit({
+  windowMs: 15 * minuto, max: 20,
+  key: req => `login|${emailDoCorpo(req)}`,
   message: 'Muitas tentativas de login para esta conta. Aguarde alguns minutos e tente de novo.'
 });
 

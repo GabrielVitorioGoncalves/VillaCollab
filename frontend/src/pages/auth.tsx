@@ -33,7 +33,7 @@ function lerLinkDoEmail(): LinkDoEmail {
     return { erro: "Este link expirou ou já foi usado. Se era para trocar a senha, peça um novo em Esqueceu a senha?" };
   }
   if (parametros.get("type") === "email_change") return { aviso: "E-mail alterado. Entre usando o novo endereço." };
-  if (parametros.get("type") === "signup" || parametros.get("access_token")) {
+  if (parametros.get("type") === "signup") {
     return { aviso: "E-mail confirmado! Agora é só entrar." };
   }
   return {};

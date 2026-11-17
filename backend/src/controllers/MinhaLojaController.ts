@@ -2,8 +2,13 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { createSupabaseClient } from '../config/supabase';
 import { enviarImagemDaLoja } from '../services/ImagemLojaService';
+import { rpcFailure } from '../errors/rpcFailure';
+import { faixaDeId, intervalo, pagina, paginaQuerySchema, termoDeBusca } from '../schemas/paginacao';
 
 const idParams = z.object({ id: z.uuid() });
+const pedidosQuerySchema = paginaQuerySchema.extend({
+  status: z.enum(['pendente', 'aceito', 'enviado', 'concluido', 'cancelado']).optional()
+});
 const imageQuery = z.object({ tipo: z.enum(['produto', 'logo', 'banner']) });
 
 const pedidoSelect = 'id, usuario_id, loja_id, status, total, created_at, updated_at, '
@@ -48,9 +53,38 @@ export class MinhaLojaController {
     } catch (error) { next(error); }
   }
 
-  async produtos(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async resumo(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const ctx = await lojaDoUsuario(req, res); if (!ctx) return;
+      const { data, error } = await ctx.client.rpc('resumo_minha_loja');
+      if (error) {
+        if (rpcFailure(error, res)) return;
+        throw error;
+      }
+      res.json(data);
+    } catch (error) { next(error); }
+  }
+
+  async produtos(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { pagina: numero, por_pagina: porPagina = 20, busca } = paginaQuerySchema.parse(req.query);
+      const ctx = await lojaDoUsuario(req, res); if (!ctx) return;
+      if (numero) {
+        let consulta = ctx.client.from('produtos').select('*', { count: 'exact' }).eq('loja_id', ctx.lojaId);
+        const termo = termoDeBusca(busca);
+        const faixa = faixaDeId(busca);
+        if (termo) {
+          consulta = consulta.or([
+            `nome.ilike.*${termo}*`, `categoria.ilike.*${termo}*`,
+            ...(faixa ? [`and(id.gte.${faixa.de},id.lte.${faixa.ate})`] : [])
+          ].join(','));
+        }
+        const [inicio, fim] = intervalo(numero, porPagina);
+        const { data, error, count } = await consulta.order('nome').order('id').range(inicio, fim);
+        if (error) throw error;
+        res.json(pagina(data ?? [], count, numero, porPagina));
+        return;
+      }
       const { data, error } = await ctx.client.from('produtos').select('*')
         .eq('loja_id', ctx.lojaId).order('nome');
       if (error) throw error;
@@ -72,7 +106,34 @@ export class MinhaLojaController {
 
   async pedidos(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const { pagina: numero, por_pagina: porPagina = 20, busca, status } = pedidosQuerySchema.parse(req.query);
       const ctx = await lojaDoUsuario(req, res); if (!ctx) return;
+      if (numero) {
+        const clientes = await clientesDaLoja(ctx.client, ctx.lojaId);
+        let consulta = ctx.client.from('pedidos').select(pedidoSelect, { count: 'exact' }).eq('loja_id', ctx.lojaId);
+        if (status) consulta = consulta.eq('status', status);
+        const termo = termoDeBusca(busca)?.toLowerCase().replace(/^#/, '');
+        if (termo) {
+          const faixa = faixaDeId(termo);
+          const ids = [...clientes].filter(([, cliente]) =>
+            (cliente.nome ?? '').toLowerCase().includes(termo) || (cliente.email ?? '').toLowerCase().includes(termo)
+          ).map(([id]) => id).slice(0, 200);
+          const condicoes = [
+            ...(ids.length > 0 ? [`usuario_id.in.(${ids.join(',')})`] : []),
+            ...(faixa ? [`and(id.gte.${faixa.de},id.lte.${faixa.ate})`] : [])
+          ];
+          if (condicoes.length === 0) { res.json(pagina([], 0, numero, porPagina)); return; }
+          consulta = consulta.or(condicoes.join(','));
+        }
+        const [inicio, fim] = intervalo(numero, porPagina);
+        const { data, error, count } = await consulta
+          .order('created_at', { ascending: false }).order('id').range(inicio, fim);
+        if (error) throw error;
+        const pedidos = (data ?? []) as unknown as PedidoRow[];
+        res.json(pagina(pedidos.map(pedido => ({ ...pedido, cliente: clientes.get(pedido.usuario_id) ?? null })),
+          count, numero, porPagina));
+        return;
+      }
       const { data, error } = await ctx.client.from('pedidos').select(pedidoSelect)
         .eq('loja_id', ctx.lojaId).order('created_at', { ascending: false });
       if (error) throw error;

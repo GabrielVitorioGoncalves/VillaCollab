@@ -4,6 +4,10 @@ import { createServiceClient, createSupabaseClient } from '../config/supabase';
 import { adminComMfa } from '../middlewares/authMiddleware';
 import { rpcFailure } from '../errors/rpcFailure';
 import { enviarImagemDaLoja } from '../services/ImagemLojaService';
+import { intervalo, pagina, paginaQuerySchema, termoDeBusca } from '../schemas/paginacao';
+
+const lojasQuerySchema = paginaQuerySchema.extend({ status: z.enum(['ativo', 'inativo']).optional() });
+const usuariosQuerySchema = paginaQuerySchema.extend({ papel: z.enum(['cliente', 'lojista', 'admin']).optional() });
 import {
   PERMISSOES_ADMIN,
   PermissaoAdmin,
@@ -161,7 +165,29 @@ export class AdminController {
 
   async lojas(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const { pagina: numero, por_pagina: porPagina = 20, busca, status } = lojasQuerySchema.parse(req.query);
       const ctx = await ator(req, res, 'lojas'); if (!ctx) return;
+      if (numero) {
+        let consulta = ctx.client.rpc('admin_listar_lojas', {}, { count: 'exact' });
+        if (status) consulta = consulta.eq('ativa', status === 'ativo');
+        const termo = termoDeBusca(busca);
+        if (termo) {
+          const digitos = termo.replace(/[^0-9a-zA-Z]/g, '');
+          consulta = consulta.or([
+            `nome.ilike.*${termo}*`, `slug.ilike.*${termo}*`,
+            `responsavel_email.ilike.*${termo}*`, `responsavel_nome.ilike.*${termo}*`,
+            ...(digitos ? [`cnpj.ilike.*${digitos}*`] : [])
+          ].join(','));
+        }
+        const [inicio, fim] = intervalo(numero, porPagina);
+        const { data, error, count } = await consulta.order('nome').order('id').range(inicio, fim);
+        if (error) {
+          if (rpcFailure(error, res)) return;
+          throw error;
+        }
+        res.json(pagina((data ?? []) as LojaAdmin[], count, numero, porPagina));
+        return;
+      }
       res.json(await listarLojas(ctx.client));
     } catch (error) { next(error); }
   }
@@ -218,6 +244,10 @@ export class AdminController {
       let novoEmailDoResponsavel: { service: ServiceClient; usuario: string } | null = null;
       if (email && email !== atual.responsavel_email?.toLowerCase()) {
         if (atual.responsavel_id) {
+          if (!ctx.permissoes.includes('usuarios')) {
+            res.status(403).json({ erro: 'Trocar o e-mail de login do responsável exige a permissão de usuários' });
+            return;
+          }
           const service = servico(res); if (!service) return;
           novoEmailDoResponsavel = { service, usuario: atual.responsavel_id };
         } else {
@@ -277,7 +307,23 @@ export class AdminController {
 
   async usuarios(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const { pagina: numero, por_pagina: porPagina = 20, busca, papel } = usuariosQuerySchema.parse(req.query);
       const ctx = await ator(req, res, 'usuarios'); if (!ctx) return;
+      if (numero) {
+        let consulta = ctx.client.rpc('admin_listar_usuarios', {}, { count: 'exact' });
+        if (papel) consulta = consulta.eq('role', papel);
+        const termo = termoDeBusca(busca);
+        if (termo) consulta = consulta.or(`nome.ilike.*${termo}*,email.ilike.*${termo}*,loja_nome.ilike.*${termo}*`);
+        const [inicio, fim] = intervalo(numero, porPagina);
+        const { data, error, count } = await consulta.order('nome').order('id').range(inicio, fim);
+        if (error) {
+          if (rpcFailure(error, res)) return;
+          throw error;
+        }
+        res.json(pagina(((data ?? []) as { id: string }[]).map(usuario => ({ ...usuario, voce: usuario.id === req.userId })),
+          count, numero, porPagina));
+        return;
+      }
       const { data, error } = await ctx.client.rpc('admin_listar_usuarios');
       if (error) throw error;
       res.json(((data ?? []) as { id: string }[]).map(usuario => ({ ...usuario, voce: usuario.id === req.userId })));

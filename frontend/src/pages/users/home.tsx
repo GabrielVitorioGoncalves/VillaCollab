@@ -1,33 +1,37 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
+import { Pagination } from "../../components/marketplace/pagination";
 import { StoreGrid } from "../../components/marketplace/storeGrid";
 import type { Store } from "../../components/marketplace/storeCard";
 import { RequestStatus } from "../../components/ui/requestStatus";
 import { useRequest } from "../../hooks/useRequest";
 import { toStoreCard } from "../../lib/catalog";
-import { listStores } from "../../lib/services";
+import { listStoresPage } from "../../lib/services";
+
+const LOJAS_POR_PAGINA = 12;
 
 export function Home() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const search = (searchParams.get("busca") ?? "").trim();
 
-  const { data, loading, error, reload } = useRequest("lojas", listStores);
+  const [paginaAtual, setPaginaAtual] = useState({ busca: search, pagina: 1 });
+  const pagina = paginaAtual.busca === search ? paginaAtual.pagina : 1;
 
-  const stores = useMemo<Store[]>(() => {
-    const term = search.toLowerCase();
+  const { data, loading, error, reload } = useRequest(
+    `lojas:${search}:${pagina}`,
+    () => listStoresPage(pagina, LOJAS_POR_PAGINA, search),
+    { manterAnterior: true }
+  );
 
-    return (data ?? [])
-      .filter(
-        (loja) =>
-          !term ||
-          loja.nome.toLowerCase().includes(term) ||
-          loja.descricao?.toLowerCase().includes(term) ||
-          loja.categoria?.toLowerCase().includes(term)
-      )
-      .map(toStoreCard);
-  }, [data, search]);
+  const stores = useMemo<Store[]>(() => (data?.itens ?? []).map(toStoreCard), [data]);
+  const totalPaginas = data ? Math.max(1, Math.ceil(data.total / LOJAS_POR_PAGINA)) : 1;
+
+  const mudarPagina = (novaPagina: number) => {
+    setPaginaAtual({ busca: search, pagina: novaPagina });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const handleViewStore = (store: Store) => {
     navigate(`/user/paginaLoja/${store.id}`);
@@ -70,7 +74,7 @@ export function Home() {
             </p>
           </div>
 
-          {loading || error ? (
+          {!data && (loading || error) ? (
             <RequestStatus
               loading={loading}
               error={error}
@@ -78,15 +82,25 @@ export function Home() {
               loadingText="Carregando lojas..."
             />
           ) : (
-            <StoreGrid
-              stores={stores}
-              onViewStore={handleViewStore}
-              emptyMessage={
-                search
-                  ? `Nenhuma loja encontrada para "${search}".`
-                  : "Nenhuma loja cadastrada ainda."
-              }
-            />
+            <>
+              {error && (
+                <p role="alert" className="mb-4 text-sm text-danger">
+                  {error}
+                </p>
+              )}
+              <StoreGrid
+                stores={stores}
+                onViewStore={handleViewStore}
+                emptyMessage={
+                  search
+                    ? `Nenhuma loja encontrada para "${search}".`
+                    : "Nenhuma loja cadastrada ainda."
+                }
+              />
+              <div className="mt-8">
+                <Pagination currentPage={pagina} totalPages={totalPaginas} onPageChange={mudarPagina} />
+              </div>
+            </>
           )}
         </section>
       </div>

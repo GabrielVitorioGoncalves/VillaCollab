@@ -201,3 +201,15 @@ test('conta com senha provisória pode redefinir pelo link e fica liberada', asy
   assert.equal(resposta.status, 204);
   assert.deepEqual(state.servico, [{ id: usuario, attrs: { app_metadata: { trocar_senha: false } } }]);
 });
+
+test('pedidos sem captcha não gastam o limite do e-mail de outra pessoa', async () => {
+  process.env.TURNSTILE_SECRET_KEY = 'segredo';
+  for (let i = 0; i < 8; i += 1) {
+    const r = await request('/api/auth/senha/recuperar', { body: { email: 'carla@teste.com' }, ip: `10.0.3.${i}` });
+    assert.equal(r.status, 400);
+  }
+  const dona = await request('/api/auth/senha/recuperar', {
+    body: { email: 'carla@teste.com', captcha_token: 'bom' }, ip: '10.0.4.1'
+  });
+  assert.equal(dona.status, 202);
+});

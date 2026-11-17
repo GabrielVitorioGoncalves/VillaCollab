@@ -8,7 +8,14 @@ export async function exigirCaptcha(req: Request, res: Response, next: NextFunct
   if (req.body && typeof req.body === 'object') delete req.body.captcha_token;
 
   const segredo = process.env.TURNSTILE_SECRET_KEY;
-  if (!segredo) { next(); return; }
+  if (!segredo) {
+    if (process.env.NODE_ENV === 'production') {
+      res.status(503).json({ erro: 'A verificação de segurança está indisponível no momento. Tente de novo mais tarde.', codigo: 'captcha' });
+      return;
+    }
+    next();
+    return;
+  }
   if (!resposta) {
     res.status(400).json({ erro: 'Confirme que você não é um robô e tente de novo.', codigo: 'captcha' });
     return;
