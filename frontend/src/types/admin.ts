@@ -1,4 +1,4 @@
-import type { PedidoStatus, UserRole } from "./api";
+import type { UserRole } from "./api";
 
 export type AdminStoreStatus = "ativo" | "inativo";
 
@@ -51,27 +51,45 @@ export interface AdminMe {
   permissoes: PermissaoAdmin[];
 }
 
+export type MotivoAtencao =
+  | "pedidos_atrasados"
+  | "sem_responsavel"
+  | "sem_receber_pedidos"
+  | "sem_produtos"
+  | "desativada";
+
 export interface AdminDashboard {
-  volume_bruto: number;
-  pedidos_mes: number;
-  lojas_ativas: number;
-  lojas_total: number;
-  ultimos_dias: { data: string; receita: number; pedidos: number }[];
-  ranking_lojas: { id: string; nome: string; ativa: boolean; pedidos: number; faturamento: number }[];
-  pedidos_recentes: {
-    id: string;
-    loja: string;
-    cliente: string | null;
-    valor: number;
-    status: PedidoStatus;
-    created_at: string;
-  }[];
-  alertas: {
-    lojas_sem_responsavel: number;
-    lojas_desativadas: number;
-    lojas_sem_receber_pedidos: number;
-    pedidos_pendentes_atrasados: number;
+  lojas: {
+    total: number;
+    ativas: number;
+    desativadas: number;
+    sem_responsavel: number;
+    sem_receber_pedidos: number;
   };
+  usuarios: {
+    clientes: number;
+    lojistas: number;
+    administradores: number;
+  };
+  pedidos: {
+    aguardando_loja: number;
+    atrasados: number;
+    em_andamento: number;
+  };
+  atencao: {
+    id: string;
+    nome: string;
+    ativa: boolean;
+    pedidos_atrasados: number;
+    motivos: MotivoAtencao[];
+  }[];
+  lojas_recentes: {
+    id: string;
+    nome: string;
+    ativa: boolean;
+    created_at: string;
+    responsavel: string | null;
+  }[];
 }
 
 export interface AdminStoreInput {
