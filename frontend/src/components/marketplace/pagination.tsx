@@ -13,13 +13,20 @@ export function Pagination({
     return null;
   }
 
-  const pages = Array.from(
-    { length: totalPages },
-    (_, index) => index + 1
+  const visiveis = new Set(
+    [1, totalPages, currentPage - 1, currentPage, currentPage + 1].filter(
+      (page) => page >= 1 && page <= totalPages
+    )
   );
+  const pages: (number | "...")[] = [];
+  for (const page of [...visiveis].sort((a, b) => a - b)) {
+    const anterior = pages[pages.length - 1];
+    if (typeof anterior === "number" && page - anterior > 1) pages.push("...");
+    pages.push(page);
+  }
 
   return (
-    <div className="flex items-center justify-center gap-2">
+    <nav aria-label="Paginação" className="flex flex-wrap items-center justify-center gap-2">
       <button
         type="button"
         disabled={currentPage === 1}
@@ -37,10 +44,15 @@ export function Pagination({
         Anterior
       </button>
 
-      {pages.map((page) => (
+      {pages.map((page, index) => page === "..." ? (
+        <span key={`reticencias-${index}`} className="px-1 text-sm text-gray-500">
+          …
+        </span>
+      ) : (
         <button
           key={page}
           type="button"
+          aria-current={currentPage === page ? "page" : undefined}
           onClick={() => onPageChange(page)}
           className={`
             min-w-10 rounded-lg border px-3 py-2
@@ -73,6 +85,6 @@ export function Pagination({
       >
         Próxima
       </button>
-    </div>
+    </nav>
   );
 }

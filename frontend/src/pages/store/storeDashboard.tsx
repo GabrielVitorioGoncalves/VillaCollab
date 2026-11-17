@@ -16,37 +16,20 @@ import { RequestStatus } from "../../components/ui/requestStatus";
 import { useStore } from "../../components/layout/storeContext";
 import { useRequest } from "../../hooks/useRequest";
 import { formatCurrency, formatShortDate, shortOrderId, toNumber } from "../../lib/format";
-import { listMyProducts, listStoreOrders } from "../../lib/services";
+import { getMyStoreSummary, listStoreOrdersPage } from "../../lib/services";
 import { storeStatusLabel, storeStatusStyle } from "../../lib/storeOrderStatus";
 import { telefoneWhatsappValido } from "../../lib/whatsapp";
-import type { PedidoLoja } from "../../types/api";
-
-const LOW_STOCK = 5;
 
 async function loadDashboard() {
-  const [pedidos, produtos] = await Promise.all([listStoreOrders(), listMyProducts()]);
-  return { pedidos, produtos, now: Date.now() };
+  const [resumo, recentes] = await Promise.all([getMyStoreSummary(), listStoreOrdersPage(1, 5)]);
+  return { resumo, recentes: recentes.itens };
 }
 
-function monthKey(date: Date) {
-  return `${date.getFullYear()}-${date.getMonth()}`;
-}
-
-function monthComparison(nowMs: number, pedidos: PedidoLoja[], value: (pedido: PedidoLoja) => number) {
-  const now = new Date(nowMs);
-  const current = monthKey(now);
-  const previous = monthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1));
-  let thisMonth = 0;
-  let lastMonth = 0;
-  for (const pedido of pedidos) {
-    const key = monthKey(new Date(pedido.created_at));
-    if (key === current) thisMonth += value(pedido);
-    if (key === previous) lastMonth += value(pedido);
+function comparacaoMensal(atual: number, anterior: number) {
+  if (anterior === 0) {
+    return { text: atual > 0 ? "Primeiras vendas" : "Sem movimento", positive: atual > 0, description: "comparado ao mês anterior" };
   }
-  if (lastMonth === 0) {
-    return { text: thisMonth > 0 ? "Primeiras vendas" : "Sem movimento", positive: thisMonth > 0, description: "comparado ao mês anterior" };
-  }
-  const change = ((thisMonth - lastMonth) / lastMonth) * 100;
+  const change = ((atual - anterior) / anterior) * 100;
   const formatted = `${change >= 0 ? "+" : ""}${change.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
   return { text: formatted, positive: change >= 0, description: "em relação ao mês anterior" };
 }
@@ -68,17 +51,14 @@ export function Dashboard() {
     );
   }
 
-  const { pedidos, produtos, now } = data;
-  const validos = pedidos.filter((pedido) => pedido.status !== "cancelado" && pedido.status !== "pendente");
-  const vendas = validos.reduce((total, pedido) => total + toNumber(pedido.total), 0);
-  const pendentes = pedidos.filter((pedido) => pedido.status === "pendente").length;
-  const semEstoque = produtos.filter((produto) => produto.estoque <= 0).length;
-  const ativos = produtos.filter((produto) => produto.ativo !== false).length;
-  const vendasMes = monthComparison(now, validos, (pedido) => toNumber(pedido.total));
-  const pedidosMes = monthComparison(now, pedidos, () => 1);
-  const estoqueBaixo = loja.notificacoes?.estoque_baixo
-    ? produtos.filter((produto) => produto.ativo !== false && produto.estoque > 0 && produto.estoque <= LOW_STOCK)
-    : [];
+  const { resumo, recentes } = data;
+  const vendas = toNumber(resumo.pedidos.vendas);
+  const pendentes = resumo.pedidos.pendentes;
+  const semEstoque = resumo.produtos.sem_estoque;
+  const ativos = resumo.produtos.ativos_na_vitrine;
+  const vendasMes = comparacaoMensal(toNumber(resumo.pedidos.vendas_mes), toNumber(resumo.pedidos.vendas_mes_anterior));
+  const pedidosMes = comparacaoMensal(resumo.pedidos.mes, resumo.pedidos.mes_anterior);
+  const estoqueBaixo = loja.notificacoes?.estoque_baixo ? resumo.estoque_baixo : [];
 
   const stats = [
     {
@@ -91,7 +71,7 @@ export function Dashboard() {
     },
     {
       title: "Pedidos recebidos",
-      value: String(pedidos.length),
+      value: String(resumo.pedidos.total),
       variation: pedidosMes.text,
       positive: pedidosMes.positive,
       description: pedidosMes.description,
@@ -99,7 +79,7 @@ export function Dashboard() {
     },
     {
       title: "Produtos cadastrados",
-      value: String(produtos.length),
+      value: String(resumo.produtos.total),
       variation: `${semEstoque} sem estoque`,
       positive: false,
       description: `${ativos} ${ativos === 1 ? "ativo" : "ativos"} na vitrine`,
@@ -115,7 +95,7 @@ export function Dashboard() {
     },
   ];
 
-  const recentOrders = pedidos.slice(0, 5);
+  const recentOrders = recentes;
 
   return (
     <div className="space-y-8">

@@ -15,10 +15,14 @@ import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Badge } from "../../components/ui/badge";
+import { Pagination } from "../../components/marketplace/pagination";
 import { RequestStatus } from "../../components/ui/requestStatus";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useRequest } from "../../hooks/useRequest";
 import { formatCurrency, formatShortDate, shortOrderId, toNumber } from "../../lib/format";
-import { listStoreOrders } from "../../lib/services";
+import { getMyStoreSummary, listStoreOrdersPage } from "../../lib/services";
+
+const PEDIDOS_POR_PAGINA = 20;
 import type { PedidoStatus } from "../../types/api";
 
 type OrderStatus =
@@ -45,6 +49,14 @@ const statusFromDb: Record<PedidoStatus, OrderStatus> = {
   enviado: "Enviado",
   concluido: "Entregue",
   cancelado: "Cancelado",
+};
+
+const statusToDb: Record<OrderStatus, PedidoStatus> = {
+  Pendente: "pendente",
+  Confirmado: "aceito",
+  Enviado: "enviado",
+  Entregue: "concluido",
+  Cancelado: "cancelado",
 };
 
 const statusOptions = [
@@ -93,11 +105,21 @@ export function Orders() {
   const [selectedStatus, setSelectedStatus] =
     useState<(typeof statusOptions)[number]>("Todos");
 
-  const request = useRequest("pedidos-da-loja", listStoreOrders);
+  const busca = useDebouncedValue(search.trim());
+  const status = selectedStatus === "Todos" ? undefined : statusToDb[selectedStatus];
+  const filtros = `${busca}|${status ?? ""}`;
+  const [paginaAtual, setPaginaAtual] = useState({ filtros, pagina: 1 });
+  const pagina = paginaAtual.filtros === filtros ? paginaAtual.pagina : 1;
+  const request = useRequest(
+    `pedidos-da-loja:${filtros}:${pagina}`,
+    () => listStoreOrdersPage(pagina, PEDIDOS_POR_PAGINA, busca, status),
+    { manterAnterior: true }
+  );
+  const resumo = useRequest("resumo-loja", getMyStoreSummary);
 
   const orders = useMemo<Order[]>(
     () =>
-      (request.data ?? []).map((pedido) => ({
+      (request.data?.itens ?? []).map((pedido) => ({
         id: pedido.id,
         code: `#${shortOrderId(pedido.id)}`,
         customer: pedido.cliente?.nome ?? "Cliente",
@@ -110,33 +132,14 @@ export function Orders() {
     [request.data],
   );
 
-  const filteredOrders = useMemo(() => {
-    const term = search.trim().toLowerCase().replace(/^#/, "");
-
-    return orders.filter((order) => {
-      const matchesSearch =
-        order.id.toLowerCase().includes(term) ||
-        order.code.toLowerCase().includes(term) ||
-        order.customer.toLowerCase().includes(term) ||
-        order.email.toLowerCase().includes(term);
-
-      const matchesStatus =
-        selectedStatus === "Todos" || order.status === selectedStatus;
-
-      return matchesSearch && matchesStatus;
-    });
-  }, [orders, search, selectedStatus]);
-
-  const totalOrders = orders.length;
-  const pendingOrders = orders.filter(
-    (order) => order.status === "Pendente",
-  ).length;
-  const shippedOrders = orders.filter(
-    (order) => order.status === "Enviado",
-  ).length;
-  const deliveredOrders = orders.filter(
-    (order) => order.status === "Entregue",
-  ).length;
+  const filteredOrders = orders;
+  const totalOrders = resumo.data?.pedidos.total ?? 0;
+  const pendingOrders = resumo.data?.pedidos.pendentes ?? 0;
+  const shippedOrders = resumo.data?.pedidos.enviados ?? 0;
+  const deliveredOrders = resumo.data?.pedidos.entregues ?? 0;
+  const totalEncontrados = request.data?.total ?? 0;
+  const totalPaginas = Math.max(1, Math.ceil(totalEncontrados / PEDIDOS_POR_PAGINA));
+  const filtrando = Boolean(busca) || selectedStatus !== "Todos";
 
   if (!request.data) {
     return (
@@ -315,12 +318,12 @@ export function Orders() {
                       className="mx-auto mb-3 text-muted"
                     />
                     <p className="font-medium text-text">
-                      {totalOrders === 0 ? "Nenhum pedido ainda" : "Nenhum pedido encontrado"}
+                      {filtrando ? "Nenhum pedido encontrado" : "Nenhum pedido ainda"}
                     </p>
                     <p className="mt-1 text-sm">
-                      {totalOrders === 0
-                        ? "Os pedidos feitos na sua loja aparecem aqui."
-                        : "Tente alterar a busca ou o filtro de status."}
+                      {filtrando
+                        ? "Tente alterar a busca ou o filtro de status."
+                        : "Os pedidos feitos na sua loja aparecem aqui."}
                     </p>
                   </td>
                 </tr>
@@ -329,12 +332,18 @@ export function Orders() {
           </table>
         </div>
 
-        <div className="border-t border-border px-5 py-3">
+        <div className="flex flex-col gap-3 border-t border-border px-5 py-3">
+          {request.error && (
+            <p role="alert" className="text-sm text-danger">
+              {request.error}
+            </p>
+          )}
           <p className="text-xs text-text-secondary">
-            Exibindo {filteredOrders.length} de {totalOrders} pedidos
+            Exibindo {filteredOrders.length} de {totalEncontrados} {filtrando ? "encontrados" : "pedidos"}
           </p>
+          <Pagination currentPage={pagina} totalPages={totalPaginas} onPageChange={(nova) => setPaginaAtual({ filtros, pagina: nova })} />
         </div>
       </Card>
     </div>
   );
-}
+}

@@ -8,7 +8,11 @@ interface RequestState<T> {
   error?: string;
 }
 
-export function useRequest<T>(key: string | null, fetcher: () => Promise<T>) {
+interface RequestOptions {
+  manterAnterior?: boolean;
+}
+
+export function useRequest<T>(key: string | null, fetcher: () => Promise<T>, options: RequestOptions = {}) {
   const [nonce, setNonce] = useState(0);
   const [state, setState] = useState<RequestState<T>>({ key: null });
 
@@ -44,7 +48,7 @@ export function useRequest<T>(key: string | null, fetcher: () => Promise<T>) {
   );
 
   return {
-    data: settled ? state.data : undefined,
+    data: settled || options.manterAnterior ? state.data : undefined,
     error: settled ? state.error : undefined,
     loading: requestKey !== null && !settled,
     reload,

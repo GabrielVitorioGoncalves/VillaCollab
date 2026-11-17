@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Plus, Search } from "lucide-react";
 
@@ -6,17 +6,21 @@ import { DataTable, type TableColumn } from "../../components/admin/dataTable";
 import { Modal } from "../../components/admin/modal";
 import { TableActions } from "../../components/admin/tabelActions";
 import { PageHeader } from "../../components/layout/pageHeader";
+import { Pagination } from "../../components/marketplace/pagination";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { RequestStatus } from "../../components/ui/requestStatus";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useRequest } from "../../hooks/useRequest";
 import { ApiError, errorMessage } from "../../lib/api";
-import { deleteAdminStore, listAdminStores, updateAdminStore } from "../../lib/admin/adminService";
+import { deleteAdminStore, listAdminStoresPage, updateAdminStore } from "../../lib/admin/adminService";
 import type { AdminStore, AdminStoreStatus } from "../../types/admin";
 
 type StatusFilter = "todos" | AdminStoreStatus;
+
+const LOJAS_POR_PAGINA = 20;
 
 const statusLabel: Record<AdminStoreStatus, string> = {
   ativo: "Ativo",
@@ -36,30 +40,26 @@ export function AdminStoresPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const notice = (location.state as { notice?: string } | null)?.notice;
-  const request = useRequest("admin-lojas", listAdminStores);
-
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("todos");
+  const busca = useDebouncedValue(search.trim());
+  const filtros = `${busca}|${statusFilter}`;
+  const [paginaAtual, setPaginaAtual] = useState({ filtros, pagina: 1 });
+  const pagina = paginaAtual.filtros === filtros ? paginaAtual.pagina : 1;
+  const request = useRequest(
+    `admin-lojas:${filtros}:${pagina}`,
+    () => listAdminStoresPage(pagina, LOJAS_POR_PAGINA, busca, statusFilter === "todos" ? undefined : statusFilter),
+    { manterAnterior: true }
+  );
   const [deleteTarget, setDeleteTarget] = useState<AdminStore | null>(null);
   const [localNotice, setLocalNotice] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [deleteBlocked, setDeleteBlocked] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const filteredStores = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-
-    return (request.data ?? []).filter((store) => {
-      const matchesSearch =
-        store.nome.toLowerCase().includes(normalizedSearch) ||
-        (store.responsavel_email ?? "").toLowerCase().includes(normalizedSearch) ||
-        store.slug.toLowerCase().includes(normalizedSearch) ||
-        (store.cnpj ?? "").toLowerCase().includes(normalizedSearch.replace(/[^0-9a-z]/g, ""));
-      const matchesStatus = statusFilter === "todos" || statusOf(store) === statusFilter;
-
-      return matchesSearch && matchesStatus;
-    });
-  }, [request.data, search, statusFilter]);
+  const filteredStores = request.data?.itens ?? [];
+  const totalEncontradas = request.data?.total ?? 0;
+  const totalPaginas = Math.max(1, Math.ceil(totalEncontradas / LOJAS_POR_PAGINA));
 
   if (!request.data) {
     return (
@@ -88,7 +88,7 @@ export function AdminStoresPage() {
     setDeleteError("");
     try {
       await deleteAdminStore(removed.id);
-      request.mutate(request.data.filter((store) => store.id !== removed.id));
+      request.reload();
       closeDelete();
       setLocalNotice(`A loja "${removed.nome}" foi excluída.`);
     } catch (caught) {
@@ -105,7 +105,10 @@ export function AdminStoresPage() {
     setSaving(true);
     try {
       const updated = await updateAdminStore(target.id, { ativa: false });
-      request.mutate(request.data.map((store) => (store.id === target.id ? updated : store)));
+      request.mutate({
+        ...request.data,
+        itens: request.data.itens.map((store) => (store.id === target.id ? updated : store)),
+      });
       closeDelete();
       setLocalNotice(`A loja "${target.nome}" foi desativada e saiu do marketplace.`);
     } catch (caught) {
@@ -214,6 +217,19 @@ export function AdminStoresPage() {
             columns={columns}
             emptyMessage="Nenhuma loja encontrada com esses filtros."
           />
+        </div>
+
+        {request.error && (
+          <p role="alert" className="mt-4 text-sm text-danger">
+            {request.error}
+          </p>
+        )}
+
+        <div className="mt-5 flex flex-col gap-4 text-sm text-text-secondary">
+          <span>
+            Exibindo {filteredStores.length} de {totalEncontradas} {totalEncontradas === 1 ? "loja" : "lojas"}
+          </span>
+          <Pagination currentPage={pagina} totalPages={totalPaginas} onPageChange={(nova) => setPaginaAtual({ filtros, pagina: nova })} />
         </div>
       </Card>
 

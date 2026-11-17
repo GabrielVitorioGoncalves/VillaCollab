@@ -148,11 +148,34 @@ export interface SessaoMfa {
   expires_at?: number;
 }
 
-export interface PaginaDePedidos {
-  itens: Pedido[];
+export interface Pagina<T> {
+  itens: T[];
   total: number;
   pagina: number;
   por_pagina: number;
+}
+
+export type PaginaDePedidos = Pagina<Pedido>;
+
+export interface ResumoLoja {
+  pedidos: {
+    total: number;
+    pendentes: number;
+    enviados: number;
+    entregues: number;
+    mes: number;
+    mes_anterior: number;
+    vendas: number;
+    vendas_mes: number;
+    vendas_mes_anterior: number;
+  };
+  produtos: {
+    total: number;
+    ativos: number;
+    ativos_na_vitrine: number;
+    sem_estoque: number;
+  };
+  estoque_baixo: { id: string; nome: string; estoque: number }[];
 }
 
 export interface RegisterResponse {

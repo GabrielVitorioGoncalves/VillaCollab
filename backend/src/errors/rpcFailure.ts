@@ -16,7 +16,7 @@ const defaultMessages: Record<RpcCode, string> = {
   INACTIVE: 'Produto indisponível',
   CLOSED: 'Esta loja não está recebendo pedidos no momento',
   MINIMUM: 'O pedido não atinge o valor mínimo da loja',
-  LIMIT: 'Você tem muitos pedidos aguardando confirmação. Aguarde a loja responder ou cancele algum antes de fazer outro.',
+  LIMIT: 'Você tem muitos pedidos em aberto ou aguardando confirmação, ou fez muitos pedidos em pouco tempo. Aguarde as lojas responderem antes de fazer outro.',
   CONTACT: 'Esta loja ainda não cadastrou o WhatsApp para receber pedidos'
 };
 

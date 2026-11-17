@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Plus, Search } from "lucide-react";
 
@@ -8,20 +8,24 @@ import { Modal } from "../../components/admin/modal";
 import { TableActions } from "../../components/admin/tabelActions";
 import { useAdmin } from "../../components/layout/adminContext";
 import { PageHeader } from "../../components/layout/pageHeader";
+import { Pagination } from "../../components/marketplace/pagination";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { RequestStatus } from "../../components/ui/requestStatus";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useRequest } from "../../hooks/useRequest";
 import { errorMessage } from "../../lib/api";
 import { formatDateTime } from "../../lib/format";
-import { deleteAdminUser, listAdminUsers, updateAdminUserRole } from "../../lib/admin/adminService";
+import { deleteAdminUser, listAdminUsersPage, updateAdminUserRole } from "../../lib/admin/adminService";
 import { listStores } from "../../lib/services";
 import type { UserRole } from "../../types/api";
 import type { AdminRoleInput, AdminUser, PapelUsuario, PermissaoAdmin, TipoAdministrador } from "../../types/admin";
 
 const PAPEIS: PapelUsuario[] = ["Cliente final", "Dono de loja", "Administrador"];
+
+const USUARIOS_POR_PAGINA = 20;
 
 const papelDoRole: Record<UserRole, PapelUsuario> = {
   cliente: "Cliente final",
@@ -41,11 +45,22 @@ export function AdminUsersPage() {
   const location = useLocation();
   const notice = (location.state as { notice?: string } | null)?.notice;
   const { me } = useAdmin();
-  const request = useRequest("admin-usuarios", listAdminUsers);
   const stores = useRequest("lojas-publicas", listStores);
 
   const [search, setSearch] = useState("");
   const [papelFilter, setPapelFilter] = useState<PapelUsuario | "todos">("todos");
+  const busca = useDebouncedValue(search.trim());
+  const filtros = `${busca}|${papelFilter}`;
+  const [paginaAtual, setPaginaAtual] = useState({ filtros, pagina: 1 });
+  const pagina = paginaAtual.filtros === filtros ? paginaAtual.pagina : 1;
+  const papel = papelFilter === "todos"
+    ? undefined
+    : (Object.keys(papelDoRole) as UserRole[]).find((role) => papelDoRole[role] === papelFilter);
+  const request = useRequest(
+    `admin-usuarios:${filtros}:${pagina}`,
+    () => listAdminUsersPage(pagina, USUARIOS_POR_PAGINA, busca, papel),
+    { manterAnterior: true }
+  );
   const [editTarget, setEditTarget] = useState<AdminUser | null>(null);
   const [editPapel, setEditPapel] = useState<PapelUsuario>("Cliente final");
   const [editLoja, setEditLoja] = useState("");
@@ -56,19 +71,9 @@ export function AdminUsersPage() {
   const [modalError, setModalError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const filteredUsers = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-
-    return (request.data ?? []).filter((user) => {
-      const matchesSearch =
-        user.nome.toLowerCase().includes(normalizedSearch) ||
-        (user.email ?? "").toLowerCase().includes(normalizedSearch) ||
-        (user.loja_nome ?? "").toLowerCase().includes(normalizedSearch);
-      const matchesPapel = papelFilter === "todos" || papelDoRole[user.role] === papelFilter;
-
-      return matchesSearch && matchesPapel;
-    });
-  }, [request.data, search, papelFilter]);
+  const filteredUsers = request.data?.itens ?? [];
+  const totalEncontrados = request.data?.total ?? 0;
+  const totalPaginas = Math.max(1, Math.ceil(totalEncontrados / USUARIOS_POR_PAGINA));
 
   if (!request.data) {
     return (
@@ -108,7 +113,10 @@ export function AdminUsersPage() {
 
   function replaceUser(updated: AdminUser) {
     if (!request.data) return;
-    request.mutate(request.data.map((user) => (user.id === updated.id ? { ...updated, voce: user.voce } : user)));
+    request.mutate({
+      ...request.data,
+      itens: request.data.itens.map((user) => (user.id === updated.id ? { ...updated, voce: user.voce } : user)),
+    });
   }
 
   async function saveRole() {
@@ -147,7 +155,7 @@ export function AdminUsersPage() {
     setModalError("");
     try {
       await deleteAdminUser(removed.id);
-      request.mutate(request.data.filter((user) => user.id !== removed.id));
+      request.reload();
       closeModals();
       setLocalNotice(`A conta de "${removed.nome}" foi excluída.`);
     } catch (caught) {
@@ -277,6 +285,19 @@ export function AdminUsersPage() {
             columns={columns}
             emptyMessage="Nenhum usuário encontrado com esses filtros."
           />
+        </div>
+
+        {request.error && (
+          <p role="alert" className="mt-4 text-sm text-danger">
+            {request.error}
+          </p>
+        )}
+
+        <div className="mt-5 flex flex-col gap-4 text-sm text-text-secondary">
+          <span>
+            Exibindo {filteredUsers.length} de {totalEncontrados} {totalEncontrados === 1 ? "usuário" : "usuários"}
+          </span>
+          <Pagination currentPage={pagina} totalPages={totalPaginas} onPageChange={(nova) => setPaginaAtual({ filtros, pagina: nova })} />
         </div>
       </Card>
 

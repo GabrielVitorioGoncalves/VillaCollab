@@ -71,6 +71,14 @@ export function PrivacyPage() {
           <li>Sem pedido em andamento, a conta é excluída na hora. Com pedido em andamento, é preciso esperar a entrega ou cancelar antes.</li>
         </ul>
       </section>
+
+      <section>
+        <h2>Contato</h2>
+        <p>
+          Para pedir acesso, correção ou exclusão dos seus dados, ou tirar dúvidas sobre esta política, escreva para{" "}
+          <a href="mailto:villacollab.app@gmail.com" className="underline">villacollab.app@gmail.com</a>.
+        </p>
+      </section>
     </LegalShell>
   );
 }

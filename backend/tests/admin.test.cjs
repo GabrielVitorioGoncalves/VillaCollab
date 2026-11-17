@@ -255,3 +255,14 @@ test('envio de logo pelo admin aceita só imagem e loja existente', async () => 
   state.lojaExiste = false;
   assert.equal((await send(png)).status, 404);
 });
+
+test('admin só com a permissão de lojas não troca o e-mail de login do responsável', async () => {
+  state.perfil = { role: 'admin', admin_permissoes: ['lojas'] };
+  const r = await request(`/api/admin/lojas/${lojaA}`, 'PATCH', { email: 'tomada@x.com', ativa: false });
+  assert.equal(r.status, 403);
+  assert.match(r.body.erro, /permissão de usuários/);
+  assert.equal(state.atualizadas.length, 0);
+  assert.equal(state.rpcCalls.some(item => item.name === 'admin_atualizar_loja'), false);
+  const outraEdicao = await request(`/api/admin/lojas/${lojaA}`, 'PATCH', { ativa: false });
+  assert.equal(outraEdicao.status, 200);
+});

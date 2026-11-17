@@ -15,7 +15,7 @@ function tokenDoLink(): string | null {
   const parametros = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const token = parametros.get("access_token");
   const tipo = parametros.get("type");
-  if (parametros.get("error") || !token || (tipo && tipo !== "recovery")) return null;
+  if (parametros.get("error") || !token || tipo !== "recovery") return null;
   return token;
 }
 

@@ -7,7 +7,13 @@ export const whatsappSchema = z.string().trim().max(20)
 export const codigoSchema = z.string().trim().toLowerCase().regex(/^[a-z0-9_-]{1,40}$/, 'Código inválido');
 const rotuloSchema = z.string().trim().min(1).max(60);
 
-export const urlImagemSchema = z.url({ protocol: /^https?$/ }).max(2048);
+function origemDoSupabase(): string | null {
+  try { return new URL(process.env.SUPABASE_URL ?? '').origin; } catch { return null; }
+}
+
+export const urlImagemSchema = z.url({ protocol: /^https?$/ }).max(2048)
+  .refine(url => url.startsWith('https://') || new URL(url).origin === origemDoSupabase(),
+    'Use um endereço de imagem com https');
 
 export const opcaoSchema = z.object({ id: codigoSchema, nome: rotuloSchema }).strict();
 

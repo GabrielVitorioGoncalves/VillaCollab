@@ -4,6 +4,7 @@ import { supabase, createSupabaseClient } from '../config/supabase';
 import { filtrosLojaSchema, urlImagemSchema, whatsappSchema } from '../schemas/catalogoSchema';
 import { rpcFailure } from '../errors/rpcFailure';
 import { adminComMfa } from '../middlewares/authMiddleware';
+import { intervalo, pagina, paginaQuerySchema, termoDeBusca } from '../schemas/paginacao';
 
 const params = z.object({ id: z.uuid() });
 const fields = z.object({
@@ -45,8 +46,23 @@ function gereLojas(perfil: { role?: string; admin_permissoes?: string[] | null }
 }
 
 export class LojaController {
-  async list(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async list(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const { pagina: numero, por_pagina: porPagina = 12, busca } = paginaQuerySchema.parse(req.query);
+      if (numero) {
+        let consulta = supabase.from('lojas')
+          .select(`${columns}, produtos(count)`, { count: 'exact' }).eq('ativa', true);
+        const termo = termoDeBusca(busca);
+        if (termo) consulta = consulta.or(`nome.ilike.*${termo}*,descricao.ilike.*${termo}*,categoria.ilike.*${termo}*`);
+        const [inicio, fim] = intervalo(numero, porPagina);
+        const { data, error, count } = await consulta.order('nome').order('id').range(inicio, fim);
+        if (error) throw error;
+        const itens = (data ?? []).map(({ produtos, ...loja }: { produtos?: { count: number }[] } & Record<string, unknown>) => ({
+          ...loja, total_produtos: produtos?.[0]?.count ?? 0
+        }));
+        res.json(pagina(itens, count, numero, porPagina));
+        return;
+      }
       const { data, error } = await supabase.from('lojas')
         .select(`${columns}, produtos(count)`).order('nome');
       if (error) throw error;

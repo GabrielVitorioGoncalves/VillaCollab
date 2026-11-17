@@ -123,3 +123,51 @@ test('descrição de produto acima de 5000 caracteres é recusada', async () => 
   assert.equal(r.status, 400);
   assert.ok(r.body.detalhes.descricao);
 });
+
+test('trocar de IP a cada tentativa não zera o limite de login da conta', async () => {
+  const body = { email: 'rotativo@teste.com', password: 'chute' };
+  for (let i = 0; i < 20; i += 1) {
+    const r = await request('/api/auth/login', { method: 'POST', body, headers: { 'CF-Connecting-IP': `198.51.100.${i + 1}` } });
+    assert.equal(r.status, 401);
+  }
+  const bloqueada = await request('/api/auth/login', { method: 'POST', body, headers: { 'CF-Connecting-IP': '198.51.100.99' } });
+  assert.equal(bloqueada.status, 429);
+  assert.equal(state.logins, 20);
+});
+
+test('em produção sem a chave do captcha o login fica indisponível em vez de liberado', async () => {
+  const anterior = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    const r = await request('/api/auth/login', { method: 'POST', body: { email: 'prod@teste.com', password: 'qualquer' } });
+    assert.equal(r.status, 503);
+    assert.equal(r.body.codigo, 'captcha');
+    assert.equal(state.logins, 0);
+  } finally {
+    if (anterior === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = anterior;
+  }
+});
+
+test('imagem precisa de https, exceto o próprio Storage do Supabase', async () => {
+  state.perfil = { role: 'lojista', loja_id: lojaA, admin_permissoes: null };
+  const base = { nome: 'Produto', preco: 10, estoque: 1, loja_id: lojaA };
+  const externa = await request('/api/produtos', { method: 'POST', body: { ...base, imagens: ['http://rastreador.example/pixel.png'] } });
+  assert.equal(externa.status, 400);
+  assert.ok(externa.body.detalhes.imagens);
+  const anterior = process.env.SUPABASE_URL;
+  process.env.SUPABASE_URL = 'http://localhost:54321';
+  try {
+    const storage = await request('/api/produtos', { method: 'POST', body: { ...base, imagens: ['http://localhost:54321/storage/v1/object/public/lojas/a.png'] } });
+    assert.notEqual(storage.status, 400);
+  } finally {
+    if (anterior === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = anterior;
+  }
+  const segura = await request('/api/produtos', { method: 'POST', body: { ...base, imagens: ['https://cdn.example/foto.png'] } });
+  assert.notEqual(segura.status, 400);
+});
+
+test('estoque acima de 1.000.000 é recusado', async () => {
+  state.perfil = { role: 'lojista', loja_id: lojaA, admin_permissoes: null };
+  const r = await request(`/api/produtos/${produto}/estoque`, { method: 'PATCH', body: { estoque: 1000001 } });
+  assert.equal(r.status, 400);
+});
