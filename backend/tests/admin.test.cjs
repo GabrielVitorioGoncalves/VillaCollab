@@ -56,7 +56,7 @@ require.cache[configPath] = {
         if (name === 'admin_listar_lojas') return { data: [loja], error: null };
         if (name === 'admin_criar_loja') return { data: lojaA, error: null };
         if (name === 'admin_listar_usuarios') return { data: [{ id: admin }, { id: outro, role: 'cliente' }, { id: novaConta, role: 'admin' }], error: null };
-        if (name === 'admin_painel') return { data: { volume_bruto: 10 }, error: null };
+        if (name === 'admin_painel') return { data: { lojas: { total: 1, ativas: 1, desativadas: 0, sem_responsavel: 0, sem_receber_pedidos: 0 }, usuarios: { clientes: 1, lojistas: 1, administradores: 1 }, pedidos: { aguardando_loja: 0, atrasados: 0, em_andamento: 0 }, atencao: [], lojas_recentes: [] }, error: null };
         if (name === 'admin_buscar_conta') return { data: state.contaPorEmail ?? null, error: null };
         return { data: null, error: null };
       },
