@@ -2,11 +2,12 @@ import { useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { Button } from "../components/ui/button";
-import { Captcha, captchaAtivo } from "../components/ui/captcha";
+import { Captcha } from "../components/ui/captcha";
 import { Card } from "../components/ui/card";
 import { FormField } from "../components/ui/formField";
 import { Input } from "../components/ui/input";
 import { errorMessage } from "../lib/api";
+import { captchaAtivo } from "../lib/captcha";
 import { login, register } from "../lib/services";
 import { paginaInicial, saveSession } from "../lib/session";
 

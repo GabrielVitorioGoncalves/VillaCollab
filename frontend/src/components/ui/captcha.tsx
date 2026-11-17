@@ -1,8 +1,6 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
-const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
-
-export const captchaAtivo = Boolean(SITE_KEY);
+import { TURNSTILE_SITE_KEY as SITE_KEY } from "../../lib/captcha";
 
 interface Turnstile {
   render(elemento: HTMLElement, opcoes: Record<string, unknown>): string;
