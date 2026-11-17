@@ -36,6 +36,10 @@ import { AdminUsersPage } from "./pages/admin/adminUsers";
 import { AdminAccountFormPage } from "./pages/admin/adminAccountForm";
 import { NewPasswordPage } from "./pages/account/newPassword";
 import { TwoFactorPage } from "./pages/account/twoFactor";
+import { ForgotPasswordPage } from "./pages/account/forgotPassword";
+import { ResetPasswordPage } from "./pages/account/resetPassword";
+import { TermsPage } from "./pages/legal/terms";
+import { PrivacyPage } from "./pages/legal/privacy";
 
 function App() {
   return (
@@ -87,6 +91,10 @@ function App() {
 
           <Route path="/conta/nova-senha" element={<NewPasswordPage />} />
           <Route path="/conta/verificacao" element={<TwoFactorPage />} />
+          <Route path="/esqueci-senha" element={<ForgotPasswordPage />} />
+          <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
+          <Route path="/termos" element={<TermsPage />} />
+          <Route path="/privacidade" element={<PrivacyPage />} />
 
           <Route path="*" element={<Navigate to="/user/home" replace />} />
         </Routes>

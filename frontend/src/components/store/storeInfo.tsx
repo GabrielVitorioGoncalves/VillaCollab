@@ -33,7 +33,7 @@ export function StoreInfo({
 
       {productCount !== undefined && (
         <p className="text-xs text-text-secondary">
-          {productCount} produtos
+          {productCount} {productCount === 1 ? "produto" : "produtos"}
         </p>
       )}
     </div>

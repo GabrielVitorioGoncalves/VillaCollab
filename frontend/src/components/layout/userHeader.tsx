@@ -9,9 +9,8 @@ import {
 } from "lucide-react";
 
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
-import { SearchBar } from "../search/searchBar";
 import { useCart } from "../../contexts/cartContext";
 import { logout } from "../../lib/services";
 import { getSession, getUserName } from "../../lib/session";
@@ -24,10 +23,8 @@ export function Header() {
   const isSeller = role === "lojista";
   const isAdmin = role === "admin";
   const { count: cartCount, flush: flushCart } = useCart();
-  const [searchParams] = useSearchParams();
   const [visible, setVisible] = useState(true);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [searchValue, setSearchValue] = useState(searchParams.get("busca") ?? "");
 
   const lastScrollY = useRef(0);
   const accumulatedScroll = useRef(0);
@@ -97,17 +94,6 @@ export function Header() {
     };
   }, []);
 
-  const handleSearch = () => {
-    const search = searchValue.trim();
-
-    navigate(search ? `/user/home?busca=${encodeURIComponent(search)}` : "/user/home");
-  };
-
-  const handleSearchChange = (value: string) => {
-    setSearchValue(value);
-    if (!value && searchParams.get("busca")) navigate("/user/home");
-  };
-
   const handleLogout = async () => {
     setUserMenuOpen(false);
     await flushCart();
@@ -124,7 +110,10 @@ export function Header() {
         z-50
         h-[70px]
         w-full
+        border-b
+        border-border
         bg-white
+        shadow-[0_2px_8px_rgba(0,0,0,0.06)]
         transition-transform
         duration-300
         ease-in-out
@@ -147,16 +136,6 @@ export function Header() {
         >
           A Villa
         </button>
-
-        {/* Busca de lojas */}
-        <div className="absolute left-1/2 w-full max-w-sm -translate-x-1/2">
-          <SearchBar
-            value={searchValue}
-            onChange={handleSearchChange}
-            onSearch={handleSearch}
-            placeholder="Buscar lojas..."
-          />
-        </div>
 
         {/* Ações */}
         <div className="ml-auto flex shrink-0 items-center gap-2">

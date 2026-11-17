@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { Button } from "../components/ui/button";
 import { Captcha } from "../components/ui/captcha";
@@ -16,20 +16,30 @@ interface AuthLocationState {
   expired?: boolean;
 }
 
-const googleIcon =
-  "https://www.figma.com/api/mcp/asset/cb8cd5ed-87ad-4a85-abd7-31963323bf3f.png";
-
 type AuthMode = "login" | "register";
 
-interface AuthProps {
-  onForgotPassword?: () => void;
-  onGoogleLogin?: () => void;
+interface LinkDoEmail {
+  recuperacao?: string;
+  aviso?: string;
+  erro?: string;
 }
 
-export function Auth({
-  onForgotPassword,
-  onGoogleLogin,
-}: AuthProps) {
+function lerLinkDoEmail(): LinkDoEmail {
+  const hash = window.location.hash;
+  if (!hash) return {};
+  const parametros = new URLSearchParams(hash.slice(1));
+  if (parametros.get("type") === "recovery") return { recuperacao: hash };
+  if (parametros.get("error") || parametros.get("error_code")) {
+    return { erro: "Este link expirou ou já foi usado. Se era para trocar a senha, peça um novo em Esqueceu a senha?" };
+  }
+  if (parametros.get("type") === "email_change") return { aviso: "E-mail alterado. Entre usando o novo endereço." };
+  if (parametros.get("type") === "signup" || parametros.get("access_token")) {
+    return { aviso: "E-mail confirmado! Agora é só entrar." };
+  }
+  return {};
+}
+
+export function Auth() {
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = (location.state ?? {}) as AuthLocationState;
@@ -39,14 +49,17 @@ export function Auth({
       ? locationState.from
       : undefined;
 
+  const [linkDoEmail] = useState(lerLinkDoEmail);
   const [mode, setMode] = useState<AuthMode>("login");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(linkDoEmail.erro ?? "");
   const [notice, setNotice] = useState(
-    locationState.expired
-      ? "Sua sessão expirou. Entre novamente para continuar."
-      : locationState.from
-        ? "Entre na sua conta para continuar."
-        : ""
+    linkDoEmail.aviso
+      ? linkDoEmail.aviso
+      : locationState.expired
+        ? "Sua sessão expirou. Entre novamente para continuar."
+        : locationState.from
+          ? "Entre na sua conta para continuar."
+          : ""
   );
   const [loading, setLoading] = useState(false);
 
@@ -55,6 +68,12 @@ export function Auth({
   const [password, setPassword] = useState("");
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaVersao, setCaptchaVersao] = useState(0);
+
+  useEffect(() => {
+    if (window.location.hash && !linkDoEmail.recuperacao) {
+      window.history.replaceState(window.history.state, "", window.location.pathname);
+    }
+  }, [linkDoEmail.recuperacao]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -105,6 +124,10 @@ export function Auth({
     setNotice("");
   };
 
+  if (linkDoEmail.recuperacao) {
+    return <Navigate to={{ pathname: "/redefinir-senha", hash: linkDoEmail.recuperacao }} replace />;
+  }
+
   return (
     <main className="min-h-screen bg-[#F4F4F5]">
       {/* Header */}
@@ -135,11 +158,6 @@ export function Auth({
             bg-white
             p-0
             shadow-[0px_4px_4px_rgba(0,0,0,0.25)]
-            ${
-              mode === "login"
-                ? "min-h-[596px]"
-                : "min-h-[704px]"
-            }
           `}
         >
           {/* Abas */}
@@ -290,25 +308,13 @@ export function Auth({
 
                   <span className="text-[16px] leading-[19px] text-black">
                     Eu concordo com os{" "}
-                    <button
-                      type="button"
-                      className="underline"
-                      onClick={(event) =>
-                        event.preventDefault()
-                      }
-                    >
-                      Termos de Serviço
-                    </button>{" "}
+                    <Link to="/termos" target="_blank" rel="noreferrer" className="underline">
+                      Termos de Uso
+                    </Link>{" "}
                     e a{" "}
-                    <button
-                      type="button"
-                      className="underline"
-                      onClick={(event) =>
-                        event.preventDefault()
-                      }
-                    >
+                    <Link to="/privacidade" target="_blank" rel="noreferrer" className="underline">
                       Política de Privacidade
-                    </button>
+                    </Link>
                     .
                   </span>
                 </label>
@@ -334,44 +340,6 @@ export function Auth({
                   {loading ? "Aguarde..." : "Criar conta"}
                 </Button>
 
-                {/* Divisor */}
-                <div className="my-[34px] flex items-center gap-3">
-                  <div className="h-px flex-1 bg-[#A9A9A9]" />
-
-                  <span className="shrink-0 text-sm text-[#A9A9A9]">
-                    Ou cadastre-se com
-                  </span>
-
-                  <div className="h-px flex-1 bg-[#A9A9A9]" />
-                </div>
-
-                {/* Google */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={onGoogleLogin}
-                  disabled={!onGoogleLogin}
-                  title={!onGoogleLogin ? "Login com Google ainda não disponível" : undefined}
-                  className="
-                    h-[53px]
-                    w-full
-                    rounded-none
-                    border border-[#A9A9A9]
-                    bg-transparent
-                    text-xl
-                    font-bold
-                    text-black
-                    hover:bg-white
-                  "
-                >
-                  <img
-                    src={googleIcon}
-                    alt=""
-                    className="h-6 w-6 object-cover"
-                  />
-
-                  Google
-                </Button>
               </>
             ) : (
               /* =========================
@@ -425,20 +393,17 @@ export function Auth({
 
                 {/* Esqueci a senha */}
                 <div className="mt-[12px] flex justify-end">
-                  <button
-                    type="button"
-                    onClick={onForgotPassword}
-                    disabled={!onForgotPassword}
-                    title={!onForgotPassword ? "Recuperação de senha ainda não disponível" : undefined}
+                  <Link
+                    to="/esqueci-senha"
                     className="
                       text-sm
-                      text-[#A9A9A9]
+                      text-[#71717A]
                       transition-colors
                       hover:text-black
                     "
                   >
-                    Esqueceu a Senha?
-                  </button>
+                    Esqueceu a senha?
+                  </Link>
                 </div>
 
                 <Captcha key={`login-${captchaVersao}`} onToken={setCaptchaToken} />
@@ -462,44 +427,6 @@ export function Auth({
                   {loading ? "Aguarde..." : "Entrar na conta"}
                 </Button>
 
-                {/* Divisor */}
-                <div className="my-[34px] flex items-center gap-3">
-                  <div className="h-px flex-1 bg-[#A9A9A9]" />
-
-                  <span className="shrink-0 text-sm text-[#A9A9A9]">
-                    ou continue com
-                  </span>
-
-                  <div className="h-px flex-1 bg-[#A9A9A9]" />
-                </div>
-
-                {/* Google */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={onGoogleLogin}
-                  disabled={!onGoogleLogin}
-                  title={!onGoogleLogin ? "Login com Google ainda não disponível" : undefined}
-                  className="
-                    h-[53px]
-                    w-full
-                    rounded-none
-                    border border-[#A9A9A9]
-                    bg-transparent
-                    text-xl
-                    font-bold
-                    text-black
-                    hover:bg-white
-                  "
-                >
-                  <img
-                    src={googleIcon}
-                    alt=""
-                    className="h-6 w-6 object-cover"
-                  />
-
-                  Google
-                </Button>
               </>
             )}
           </form>

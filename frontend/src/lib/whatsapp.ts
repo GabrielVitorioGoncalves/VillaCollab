@@ -6,6 +6,12 @@ export function telefoneWhatsappValido(telefone: string | null | undefined): boo
   return /^55[1-9][0-9]{9,10}$/.test(digitos);
 }
 
+export function linkConversaWhatsapp(telefone: string | null | undefined): string | null {
+  if (!telefoneWhatsappValido(telefone)) return null;
+  const digitos = (telefone ?? "").replace(/\D/g, "");
+  return `https://wa.me/${digitos.length <= 11 ? `55${digitos}` : digitos}`;
+}
+
 export function linkWhatsappSeguro(url: string | null | undefined): string | null {
   return url && /^https:\/\/wa\.me\/\d{12,13}\?text=[^\s]*$/.test(url) ? url : null;
 }

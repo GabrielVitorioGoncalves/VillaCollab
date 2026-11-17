@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -507,8 +507,11 @@ export function PaymentPage() {
                 )}
 
                 <p className="text-center text-xs text-text-secondary">
-                  Ao finalizar, você confirma seu pedido e
-                  concorda com as condições da compra.
+                  Ao finalizar, você confirma seu pedido e concorda com os{" "}
+                  <Link to="/termos" target="_blank" rel="noreferrer" className="underline">
+                    termos de uso
+                  </Link>
+                  .
                 </p>
               </div>
             </Card>

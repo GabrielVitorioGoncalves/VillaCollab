@@ -85,7 +85,7 @@ export function StoreCard({
 
         {store.productCount !== undefined && (
           <p className="mt-3 text-xs text-text-secondary">
-            {store.productCount} produtos
+            {store.productCount} {store.productCount === 1 ? "produto" : "produtos"}
           </p>
         )}
 
